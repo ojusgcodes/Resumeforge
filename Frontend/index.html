@@ -978,7 +978,7 @@ input[type="file"] {
     </section>
     <script>
 
-        loadingInterval = null;
+        window.resumeLoadingInterval = null;
         document.getElementById("generateBtn")
             .addEventListener("click", async () => {
                 document.getElementById("result").innerHTML = `
@@ -1025,7 +1025,7 @@ const loadingMessages = [
 
 let loadingIndex = 0;
 
-loadingInterval = setInterval(() => {
+window.resumeLoadingInterval = setInterval(() => {
     loadingIndex++;
 
     if (loadingIndex >= loadingMessages.length) {
@@ -1083,7 +1083,7 @@ btn.innerHTML = "⏳ Generating...";
 
 let currentMessage = 0;
 
-const loadingInterval =
+window.resumeLoadingInterval =
 setInterval(() => {
 
     if (currentMessage < messages.length) {
@@ -1227,8 +1227,8 @@ loadingText.innerText =
         <p>Please try again later.</p>
     </div>
     `;
-if (loadingInterval) {
-    clearInterval(loadingInterval);
+if (window.resumeLoadingInterval) {
+    clearInterval(window.resumeLoadingInterval);
 }
     btn.disabled = false;
     btn.innerHTML = "🚀 Generate Resume";
