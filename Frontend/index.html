@@ -1112,23 +1112,29 @@ setTimeout(() => {
     "scale(1)";
 
 }, 500);
-loadingText.innerText =
-"Displaying your resume...";
-                    if (!data.success) {
+loadingText.innerText ="Displaying your resume...";
+
+console.log("Final backend response:", data);
+console.log("Success value:", data.success);
+console.log("Resume value:", data.resume);
+if (!data.resume) {
+
+    console.log("Backend said failed:", data);
 
     document.getElementById("result").innerHTML = `
-    <div class="loading-card">
-        <h3>⚠️ AI Service Busy</h3>
-        <p>Please try again later.</p>
+    <div class="error-card">
+        <h3>⚠️ Resume generation failed</h3>
+        <p>${data.error || "Unknown error. Please check backend logs."}</p>
     </div>
     `;
+
     btn.disabled = false;
     btn.innerHTML = "🚀 Generate Resume";
 
     return;
 }
-                    btn.disabled = false;
-                    btn.innerHTML = "🚀 Generate Resume";
+                btn.disabled = false;
+                btn.innerHTML = "🚀 Generate Resume";
 document.getElementById("result").innerHTML = `
 <div class="preview-banner">
     <h3>📄 Resume Preview</h3>
@@ -1143,6 +1149,10 @@ document.getElementById("result").innerHTML = `
     <button id="professionalPdfBtn" class="pdf-btn">
     📄 Download Professional Template
 </button>
+</div>
+
+<div class="resume-content">
+    ${data.resume.replace(/\n/g, "<br>")}
 </div>
 
 <div class="github-analysis fade-in">
