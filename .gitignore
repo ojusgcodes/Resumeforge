@@ -1,0 +1,25 @@
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.env
+.env.local
+
+# Generated resume files
+latest_resume.txt
+latest_contact.txt
+professional_resume.pdf
+professional_resume.html
+ResumeForge_Professional_Template.pdf
+
+# Uploaded LinkedIn screenshots
+linkedin_*.png
+
+# Editor and system files
+.vscode/
+.DS_Store
+Thumbs.db
