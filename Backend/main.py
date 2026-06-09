@@ -1,5 +1,4 @@
 from email.mime import image
-from turtle import width
 from urllib import response
 
 from click import prompt
