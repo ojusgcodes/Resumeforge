@@ -978,7 +978,7 @@ input[type="file"] {
     </section>
     <script>
 
-        let loadingInterval;
+        let loadingInterval = null;
         document.getElementById("generateBtn")
             .addEventListener("click", async () => {
                 document.getElementById("result").innerHTML = `
