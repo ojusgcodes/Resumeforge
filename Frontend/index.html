@@ -1024,13 +1024,17 @@ const loadingMessages = [
 
 let loadingIndex = 0;
 
-const loading1Interval = setInterval(() => {
-    loadingIndex = (loadingIndex + 1) % loadingMessages.length;
+loadingInterval = setInterval(() => {
+    loadingIndex++;
+
+    if (loadingIndex >= loadingMessages.length) {
+        loadingIndex = 0;
+    }
 
     const title = document.getElementById("loadingMessage");
     const subText = document.getElementById("loadingSubText");
 
-    if (title && subText) {
+    if (title && subText && loadingMessages[loadingIndex]) {
         title.innerText = loadingMessages[loadingIndex].title;
         subText.innerText = loadingMessages[loadingIndex].text;
     }
