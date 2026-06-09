@@ -977,8 +977,6 @@ input[type="file"] {
 
     </section>
     <script>
-
-        window.resumeLoadingInterval = null;
         document.getElementById("generateBtn")
             .addEventListener("click", async () => {
                 document.getElementById("result").innerHTML = `
@@ -996,50 +994,6 @@ input[type="file"] {
 
 </div>
 `;
-const loadingMessages = [
-    {
-        title: "🔍 Analyzing GitHub...",
-        text: "Checking repositories and skills..."
-    },
-    {
-        title: "📸 Reading LinkedIn...",
-        text: "Extracting education and experience..."
-    },
-    {
-        title: "🧠 Detecting Skills...",
-        text: "Understanding your technical profile..."
-    },
-    {
-        title: "✍️ Generating Resume...",
-        text: "Writing ATS-friendly resume content..."
-    },
-    {
-        title: "📄 Formatting Resume...",
-        text: "Preparing your final resume..."
-    },
-    {
-        title: "✨ Almost Ready...",
-        text: "Finalizing your resume preview..."
-    }
-];
-
-let loadingIndex = 0;
-
-window.resumeLoadingInterval = setInterval(() => {
-    loadingIndex++;
-
-    if (loadingIndex >= loadingMessages.length) {
-        loadingIndex = 0;
-    }
-
-    const title = document.getElementById("loadingMessage");
-    const subText = document.getElementById("loadingSubText");
-
-    if (title && subText && loadingMessages[loadingIndex]) {
-        title.innerText = loadingMessages[loadingIndex].title;
-        subText.innerText = loadingMessages[loadingIndex].text;
-    }
-}, 2000);
 
 const btn = document.getElementById("generateBtn");
 const loadingTitle =
@@ -1051,65 +1005,6 @@ loadingTitle.innerText =
 "TEST WORKING";
 btn.disabled = true;
 btn.innerHTML = "⏳ Generating...";
-
-                const messages = [
-
-    {
-        title: "🔍 Analyzing GitHub...",
-        text: "Gathering skills and projects..."
-    },
-
-    {
-        title: "📸 Reading LinkedIn...",
-        text: "Extracting education and experience..."
-    },
-
-    {
-        title: "🧠 Understanding Profile...",
-        text: "Matching qualifications..."
-    },
-
-    {
-        title: "✍️ Writing Resume...",
-        text: "Generating ATS-optimized content..."
-    },
-
-    {
-        title: "📄 Formatting Resume...",
-        text: "Preparing final output..."
-    }
-
-];
-
-let currentMessage = 0;
-
-window.resumeLoadingInterval =
-setInterval(() => {
-
-    if (currentMessage < messages.length) {
-
-        loadingTitle.style.opacity = "0";
-loadingText.style.opacity = "0";
-
-setTimeout(() => {
-
-    loadingTitle.innerText =
-    messages[currentMessage].title;
-
-    loadingText.innerText =
-    messages[currentMessage].text;
-
-    loadingTitle.style.opacity = "1";
-    loadingText.style.opacity = "1";
-
-}, 300);
-
-        currentMessage++;
-
-    }
-
-}, 2000);
-
 
                 const email =
 document.getElementById("email").value;
@@ -1227,9 +1122,6 @@ loadingText.innerText =
         <p>Please try again later.</p>
     </div>
     `;
-if (window.resumeLoadingInterval) {
-    clearInterval(window.resumeLoadingInterval);
-}
     btn.disabled = false;
     btn.innerHTML = "🚀 Generate Resume";
 
