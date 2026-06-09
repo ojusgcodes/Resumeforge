@@ -1145,7 +1145,7 @@ for (let i = 0; i < linkedinImages.length; i++) {
     );
 
 }const uploadResponse = await fetch(
-    "http://127.0.0.1:8000/upload-linkedin",
+    "https://resumeforge-backend-1bu3.onrender.com/upload-linkedin",
     {
         method: "POST",
         body: formData
@@ -1169,7 +1169,7 @@ if (uploadData.success) {
 
 console.log(linkedinData);
                 const response = await fetch(
-                    "http://127.0.0.1:8000/generate",
+                    "https://resumeforge-backend-1bu3.onrender.com/generate",
                     {
                         method: "POST",
 
@@ -1309,7 +1309,7 @@ document.addEventListener("click", function(e){
     if(e.target.id === "pdfBtn"){
 
         window.open(
-            "http://127.0.0.1:8000/download-pdf",
+            "https://resumeforge-backend-1bu3.onrender.com/download-pdf",
             "_blank"
         );
     }
@@ -1320,7 +1320,7 @@ document.addEventListener("click", function(e){
     if(e.target.id === "professionalPdfBtn"){
 
         window.open(
-            "http://127.0.0.1:8000/download-professional-pdf",
+            "https://resumeforge-backend-1bu3.onrender.com/download-professional-pdf",
             "_blank"
         );
 
