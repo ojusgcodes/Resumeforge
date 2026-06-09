@@ -978,6 +978,7 @@ input[type="file"] {
     </section>
     <script>
 
+        let loadingInterval;
         document.getElementById("generateBtn")
             .addEventListener("click", async () => {
                 document.getElementById("result").innerHTML = `
@@ -1226,9 +1227,9 @@ loadingText.innerText =
         <p>Please try again later.</p>
     </div>
     `;
-clearInterval(
-    loadingInterval
-);
+if (loadingInterval) {
+    clearInterval(loadingInterval);
+}
     btn.disabled = false;
     btn.innerHTML = "🚀 Generate Resume";
 
