@@ -1,0 +1,208 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+
+        <style>
+            @page {
+                size: A4;
+                margin: 0;
+            }
+
+            body {
+        margin: 0;
+        padding: 0;
+
+    font-family: Arial, sans-serif;
+
+    background: #9b918c;
+
+    color: #222;
+}
+
+            .resume-page {
+        width: 210mm;
+    height: 297mm;
+
+    display: flex;
+
+    background: white;
+
+    box-sizing: border-box;
+
+    padding: 18mm 16mm;
+
+    border: 10mm solid #9b918c;
+
+    position: relative;
+}
+.resume-page::before {
+    content: "";
+
+    position: absolute;
+
+    top: -10mm;
+    right: -10mm;
+
+    width: 0;
+    height: 0;
+
+    border-top: 16mm solid #7f7773;
+    border-left: 16mm solid transparent;
+}
+
+.resume-page::after {
+    content: "";
+
+    position: absolute;
+
+    bottom: -10mm;
+    left: -10mm;
+
+    width: 0;
+    height: 0;
+
+    border-bottom: 16mm solid #7f7773;
+    border-right: 16mm solid transparent;
+}
+            .sidebar {
+                width: 35%;
+                padding-right: 18px;
+                border-right: 2px solid #b7aaa5;
+                box-sizing: border-box;
+                font-size: 12px;
+            }
+
+            .main {
+                width: 65%;
+                padding-left: 28px;
+                box-sizing: border-box;
+            }
+
+            .name {
+                font-size: 34px;
+                font-weight: 300;
+                letter-spacing: 1px;
+                color: #555;
+                margin-bottom: 28px;
+            }
+
+            .section-title {
+                font-size: 17px;
+                color: #555;
+                margin-top: 22px;
+                margin-bottom: 8px;
+                font-weight: 500;
+            }
+
+            .sidebar-title {
+                font-size: 15px;
+                color: #555;
+                margin-top: 24px;
+                margin-bottom: 8px;
+                font-weight: 500;
+            }
+
+            .contact {
+                font-size: 11px;
+                line-height: 1.6;
+                margin-bottom: 20px;
+            }
+
+            p {
+                margin: 0 0 8px 0;
+                line-height: 1.45;
+                font-size: 12px;
+            }
+
+            ul {
+                margin: 0;
+                padding-left: 16px;
+            }
+
+            li {
+                margin-bottom: 5px;
+                line-height: 1.4;
+                font-size: 12px;
+            }
+
+            .skill-list li {
+                font-size: 11.5px;
+            }
+
+            .experience-block {
+                margin-bottom: 16px;
+            }
+
+            .muted {
+                color: #666;
+                font-style: italic;
+                font-size: 11px;
+            }
+
+            .divider {
+                height: 1px;
+                background: #b7aaa5;
+                margin: 8px 0 12px 0;
+            }
+        </style>
+    </head>
+
+    <body>
+
+        <div class="resume-page">
+
+            <div class="sidebar">
+
+                <div class="contact">
+                    <strong>email@example.com</strong><br>
+                    +91 98765 43210<br>
+                    New Delhi, India
+                </div>
+
+                <div class="sidebar-title">Skills</div>
+                <ul class="skill-list">
+                    <li>C++</li>
+                </ul>
+
+                <div class="sidebar-title">Education And Training</div>
+                <p>BA Program, Economics | Delhi University | 2019 - 2022<br></p>
+
+                <div class="sidebar-title">Languages</div>
+                <p>English: Professional</p>
+                <p>Hindi: Native</p>
+
+                <div class="sidebar-title">Interests And Hobbies</div>
+                <ul>
+                    <li>Technology</li>
+                    <li>Software Development</li>
+                    <li>Problem Solving</li>
+                </ul>
+
+            </div>
+
+            <div class="main">
+
+                <div class="name">ResumeForge Candidate</div>
+
+                <div class="section-title">Summary</div>
+                <p>Visionary Chief Executive Officer with 16 years of leadership experience, adept at driving innovation and market growth through strategic analysis and trend identification. Eager to transition into a Data Scientist role, leveraging a strong foundation in economics, business acumen, and C++ programming to solve complex data challenges and contribute to data-driven decision-making.<br><br></p>
+
+                <div class="section-title">Experience</div>
+                <ul>
+                    <p>Chief Executive Officer | paramount jewels | Delhi, India</p><p>January 2010 – Present</p><li>Spearheaded strategic initiatives, analyzing market trends and consumer preferences to drive brand innovation and cultivate customer satisfaction.</li><li>Led the development and introduction of trend-driven jewellery collections, leveraging market insights to achieve a competitive edge.</li><li>Expanded wholesale operations and fostered robust relationships with retailers and business partners across India and globally, contributing to sustained revenue growth.</li><li>Utilized comprehensive business planning to define strategic objectives and optimize resource allocation for market expansion.</li>
+                </ul>
+
+                <div class="section-title">Projects</div>
+                <ul>
+                    
+                </ul>
+
+            </div>
+
+        </div>
+
+    </body>
+    </html>
+    

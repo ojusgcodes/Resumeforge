@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResumeForge AI</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Inter, Arial, sans-serif;
+        }
+
+        body {
+    background: linear-gradient(
+        -45deg,
+        #0f172a,
+        #1e293b,
+        #312e81,
+        #0f172a
+    );
+    background-size: 400% 400%;
+    animation: gradientBG 15s ease infinite;
+}
+
+@keyframes gradientBG {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+
+            width: 95%;
+            margin: auto;
+
+            padding: 24px 0;
+        }
+
+        .logo {
+    animation: float 4s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%,100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+        .logo span {
+            color: #3b82f6;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 24px;
+            list-style: none;
+        }
+
+        .nav-item {
+
+            text-decoration: none;
+
+            color: #a1a1aa;
+
+            padding: 12px 20px;
+
+            border-radius: 12px;
+
+            transition: .3s ease;
+
+            position: relative;
+        }
+
+        .nav-item:hover {
+
+            color: white;
+
+            background: rgba(255, 255, 255, .06);
+
+            transform: translateY(-2px);
+        }
+
+        .nav-item::after {
+
+            content: "";
+
+            position: absolute;
+
+            left: 50%;
+
+            bottom: 5px;
+
+            width: 0;
+
+            height: 2px;
+
+            background: #3b82f6;
+
+            transition: .3s;
+        }
+
+        .nav-item:hover::after {
+
+            width: 60%;
+
+            left: 20%;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .login-btn {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+        }
+
+        .signup-btn {
+            background: white;
+            color: black;
+
+            border: none;
+
+            padding: 12px 18px;
+
+            border-radius: 10px;
+
+            cursor: pointer;
+        }
+
+        /* HERO */
+
+        .hero {
+            text-align: center;
+
+            padding: 120px 20px;
+        }
+
+        .badge {
+            display: inline-block;
+
+            padding: 8px 14px;
+
+            border: 1px solid rgba(255, 255, 255, .1);
+
+            border-radius: 999px;
+
+            color: #a1a1aa;
+
+            margin-bottom: 30px;
+        }
+
+        .hero h1 {
+            font-size: 5rem;
+            color: white;
+            max-width: 900px;
+
+            margin: auto;
+
+            line-height: 1.1;
+
+            margin-bottom: 30px;
+        }
+
+        .hero p {
+            color: #d1d5db;
+
+            font-size: 1.2rem;
+
+            max-width: 800px;
+
+            margin: auto;
+
+            line-height: 1.8;
+
+            margin-bottom: 40px;
+        }
+
+        .hero-buttons {
+            display: flex;
+
+            justify-content: center;
+
+            gap: 16px;
+        }
+
+        .primary-btn {
+            background: white;
+
+            color: black;
+
+            border: none;
+
+            padding: 16px 26px;
+
+            border-radius: 12px;
+
+            cursor: pointer;
+        }
+
+        .secondary-btn {
+            background: none;
+
+            color: white;
+
+            border: 1px solid rgba(255, 255, 255, .1);
+
+            padding: 16px 26px;
+
+            border-radius: 12px;
+
+            cursor: pointer;
+        }
+
+        /* FEATURES */
+
+        .features {
+            padding: 100px 20px;
+
+            max-width: 1200px;
+
+            margin: auto;
+        }
+
+        .features h2 {
+            text-align: center;
+
+            font-size: 3rem;
+            color: white;
+            margin-bottom: 15px;
+        }
+
+        .features-subtitle {
+            text-align: center;
+
+            color: #a1a1aa;
+
+            margin-bottom: 60px;
+        }
+
+        .features-grid {
+            display: grid;
+
+            grid-template-columns:
+                repeat(auto-fit, minmax(250px, 1fr));
+
+            gap: 24px;
+        }
+
+        .feature-card {
+            background: #111111;
+
+            border: 1px solid rgba(255, 255, 255, .05);
+            color: white;
+            padding: 30px;
+
+            border-radius: 20px;
+        }
+
+        .feature-card h3 {
+            margin-bottom: 15px;
+            color: #ededed;
+        }
+
+        .feature-card p {
+            color: #ffffff;
+
+            line-height: 1.7;
+        }
+
+        /* GENERATOR */
+
+        .generator {
+            max-width: 900px;
+
+            margin: 120px auto;
+
+            padding: 0 20px;
+        }
+
+        .generator h2 {
+            text-align: center;
+
+            font-size: 3rem;
+
+            margin-bottom: 15px;
+        }
+
+        .generator p {
+            text-align: center;
+
+            color: #a1a1aa;
+
+            margin-bottom: 50px;
+        }
+
+        .form-card {
+            background: #111111;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, .05);
+
+            border-radius: 24px;
+
+            padding: 40px;
+
+            transition: all 0.3s ease;
+        }
+
+        .form-card:hover {
+
+    transform: translateY(-5px);
+
+}
+
+
+        .form-card label {
+            display: block;
+            color: #a1a1aa;
+            margin-top: 18px;
+
+            margin-bottom: 8px;
+        }
+
+        .form-card input {
+            width: 100%;
+
+            padding: 14px;
+
+            border-radius: 12px;
+
+            border: none;
+
+            background: #1a1a1a;
+
+            color: white;
+        }
+
+        .generate-btn {
+            width: 100%;
+
+            margin-top: 30px;
+
+            padding: 16px;
+
+            border: none;
+
+            border-radius: 12px;
+
+            background: #3b82f6;
+
+            color: white;
+
+            cursor: pointer;
+        }
+
+        /* FOOTER */
+
+        .footer {
+            margin-top: 150px;
+
+            border-top: 1px solid rgba(255, 255, 255, .05);
+
+            padding: 40px;
+
+            text-align: center;
+
+            color: #71717a;
+        }
+      .resume-card{
+
+    margin-top:30px;
+
+    background:#ffffff;
+
+    font-family: Arial, sans-serif;
+
+    color:black;
+
+    max-width:900px;
+
+    margin-left:auto;
+
+    margin-right:auto;
+
+    padding:50px;
+
+    border-radius:20px;
+
+    text-align:left;
+
+    box-shadow:
+    0 15px 40px rgba(0,0,0,.25);
+}
+
+.resume-card h2{
+
+    text-align:center;
+
+    color:#7c3aed;
+
+    margin-bottom:30px;
+
+    font-size:2rem;
+}
+
+.resume-content{
+
+    line-height:2;
+
+    font-size:1rem;
+
+    color:#111827;
+}
+.loading-card {
+
+    animation: floatCard 3s ease-in-out infinite;
+
+}
+
+@keyframes floatCard {
+
+    0%,100% {
+
+        transform: translateY(0px);
+
+    }
+
+    50% {
+
+        transform: translateY(-8px);
+
+    }
+
+}
+
+.loading-card h3{
+    color:#8b5cf6;
+    margin-bottom:10px;
+}
+
+.loading-card p{
+    color:#94a3b8;
+}
+
+.loader {
+
+    width: 60px;
+
+    height: 60px;
+
+    border: 4px solid rgba(255,255,255,.1);
+
+    border-top: 4px solid #7c3aed;
+
+    border-radius: 50%;
+
+    margin: 20px auto;
+
+    animation: spin 1s linear infinite;
+
+}
+
+@keyframes spin {
+
+    100% {
+
+        transform: rotate(360deg);
+
+    }
+
+}
+
+@keyframes spin{
+    from{
+        transform:rotate(0deg);
+    }
+    to{
+        transform:rotate(360deg);
+    }
+}
+.preview-banner{
+    background:rgba(124,58,237,.12);
+    border:1px solid rgba(124,58,237,.3);
+    border-radius:18px;
+    padding:25px;
+    margin-top:30px;
+    text-align:center;
+}
+
+.preview-banner h3{
+    color:#8b5cf6;
+    margin-bottom:10px;
+}
+
+.preview-banner p{
+    color:#cbd5e1;
+    margin-bottom:20px;
+}
+
+.pdf-btn{
+    background:linear-gradient(
+        135deg,
+        #7c3aed,
+        #3b82f6
+    );
+
+    color:white;
+
+    border:none;
+
+    padding:14px 28px;
+
+    border-radius:12px;
+
+    cursor:pointer;
+
+    font-size:1rem;
+
+    transition:.3s;
+}
+
+.pdf-btn:hover{
+    transform:translateY(-2px);
+}
+.resume-content hr{
+
+    border:none;
+
+    border-top:2px solid #7c3aed;
+
+    margin:20px 0;
+}
+
+.resume-content h3{
+
+    color:#7c3aed;
+
+    margin:15px 0;
+}
+.resume-content{
+    line-height:2;
+    font-size:1.05rem;
+    color:#111827;
+}
+
+.resume-content strong{
+    color:#7c3aed;
+}
+.resume-content{
+    line-height:2;
+    font-size:1.1rem;
+    color:#111827;
+}
+
+.section-title{
+    color:#7c3aed;
+    font-size:1.4rem;
+    font-weight:700;
+    margin-top:30px;
+    margin-bottom:15px;
+    border-bottom:2px solid #7c3aed;
+    padding-bottom:5px;
+}
+.footer{
+
+    margin-top:80px;
+
+    background:#0f172a;
+
+    border-top:1px solid rgba(255,255,255,.08);
+
+    padding:40px 20px;
+
+    text-align:center;
+}
+
+.footer-content h3{
+
+    color:#7c3aed;
+
+    margin-bottom:15px;
+
+    font-size:1.5rem;
+}
+
+.footer-content p{
+
+    color:#94a3b8;
+
+    margin:8px 0;
+}
+
+.copyright{
+
+    margin-top:20px;
+
+    font-size:.9rem;
+
+    color:#64748b;
+}
+.github-analysis {
+
+    background: #111827;
+
+    border: 1px solid #374151;
+
+    border-radius: 12px;
+
+    padding: 20px;
+
+    margin-bottom: 20px;
+
+    color: white;
+}
+
+.github-analysis h3 {
+
+    color: #8b5cf6;
+
+    margin-bottom: 15px;
+}
+.github-analysis-grid {
+
+    display: grid;
+
+    grid-template-columns: 1fr 1fr;
+
+    gap: 15px;
+
+    margin-top: 15px;
+}
+.analysis-item {
+
+    background: rgba(255,255,255,0.05);
+
+    border: 1px solid rgba(255,255,255,0.1);
+
+    padding: 15px;
+
+    border-radius: 10px;
+}
+.analysis-badge {
+
+    background: #7c3aed;
+
+    padding: 5px 10px;
+
+    border-radius: 20px;
+
+    font-size: 12px;
+
+    margin-left: 10px;
+}
+
+.fade-in {
+
+    animation: fadeIn 0.8s ease;
+
+}
+
+@keyframes fadeIn {
+
+    from {
+
+        opacity: 0;
+
+        transform: translateY(20px);
+
+    }
+
+    to {
+
+        opacity: 1;
+
+        transform: translateY(0);
+
+    }
+
+}
+
+@keyframes gradientBG {
+
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+
+    100% {
+        background-position: 0% 50%;
+    }
+
+}
+.logo {
+
+    animation: float 4s ease-in-out infinite;
+
+}
+
+@keyframes float {
+
+    0%,100% {
+
+        transform: translateY(0);
+
+    }
+
+    50% {
+
+        transform: translateY(-10px);
+
+    }
+
+}
+input[type="file"] {
+
+    color: white;
+
+    background: rgba(255,255,255,.05);
+
+    border: 1px solid rgba(255,255,255,.15);
+
+    padding: 12px;
+
+    border-radius: 12px;
+
+    width: 100%;
+
+}
+#loadingTitle {
+
+    animation: pulseGlow 2s infinite;
+
+}
+
+@keyframes pulseGlow {
+
+    0% {
+
+        opacity: .6;
+
+    }
+
+    50% {
+
+        opacity: 1;
+
+    }
+
+    100% {
+
+        opacity: .6;
+
+    }
+
+}
+#loadingTitle,
+#loadingText {
+
+    transition: all .4s ease;
+
+}
+#loadingMessage {
+    color: #8b5cf6;
+    font-size: 1.6rem;
+    margin-bottom: 10px;
+    animation: pulseText 1.5s infinite;
+}
+
+#loadingSubText {
+    color: #cbd5e1;
+    font-size: 1rem;
+}
+
+@keyframes pulseText {
+    0% {
+        opacity: 0.6;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0.6;
+    }
+}
+    </style>
+</head>
+
+<body>
+
+    <nav class="navbar">
+
+        <div class="logo">
+            Resume<span>Forge</span>
+        </div>
+
+        <ul class="nav-links">
+
+            <li><a href="#" class="nav-item">Home</a></li>
+
+            <li><a href="#" class="nav-item">Features</a></li>
+
+            <li><a href="#" class="nav-item">Templates</a></li>
+
+            <li><a href="#" class="nav-item">Pricing</a></li>
+
+            <li><a href="#" class="nav-item">Contact</a></li>
+
+        </ul>
+
+        <div class="nav-buttons">
+            <button class="login-btn">Login</button>
+            <button class="signup-btn">Sign Up</button>
+        </div>
+
+    </nav>
+
+    <section class="hero">
+
+        <div class="badge">
+            AI Powered Resume Builder
+        </div>
+
+        <h1>
+            Build Better Resumes With AI
+        </h1>
+
+        <p>
+            Transform your GitHub, LinkedIn, portfolio, and experience into recruiter-ready resumes tailored for Amazon,
+            Microsoft, Google, and other top companies.
+        </p>
+
+        <div class="hero-buttons">
+
+            <button class="primary-btn">
+                Get Started Free
+            </button>
+
+            <button class="secondary-btn">
+                Watch Demo
+            </button>
+
+        </div>
+
+    </section>
+
+    <section class="features">
+
+        <h2>Why ResumeForge?</h2>
+
+        <p class="features-subtitle">
+            Everything you need to land your dream job.
+        </p>
+
+        <div class="features-grid">
+
+            <div class="feature-card">
+                <h3>🤖 AI Resume Builder</h3>
+                <p>Create ATS-friendly resumes instantly.</p>
+            </div>
+
+            <div class="feature-card">
+                <h3>🎯 Company Optimization</h3>
+                <p>Tailor resumes for specific companies.</p>
+            </div>
+
+            <div class="feature-card">
+                <h3>🌐 Portfolio Generator</h3>
+                <p>Create a portfolio website automatically.</p>
+            </div>
+
+            <div class="feature-card">
+                <h3>💼 Interview Preparation</h3>
+                <p>Get personalized interview questions.</p>
+            </div>
+
+        </div>
+
+    </section>
+
+    <section class="generator">
+
+        <h2>Generate Your Resume</h2>
+
+        <p>
+            Connect your profiles and let AI do the work.
+        </p>
+
+        <div class="form-card">
+
+            <label>Email</label>
+<input
+    id="email"
+    type="email"
+    placeholder="your.email@example.com"
+/>
+
+<label>Phone Number</label>
+<input
+    id="phone"
+    type="text"
+    placeholder="+91 XXXXX XXXXX"
+/>
+
+<label>Location</label>
+<input
+    id="location"
+    type="text"
+    placeholder="New Delhi, India"
+/>
+
+            <label>GitHub URL</label>
+            <input id="github" type="text" placeholder="https://github.com/username">
+            <label>LinkedIn Profile Screenshot</label>
+
+<input
+    type="file"
+    id="linkedinImage"
+    accept="image/*"
+    multiple
+/>
+<div class="linkedin-help">
+
+    <h4>📸 Upload LinkedIn Screenshots</h4>
+
+    <p>For best results, upload screenshots containing:</p>
+
+    <ul>
+        <li>✅ Profile Header</li>
+        <li>✅ Education</li>
+        <li>✅ Experience</li>
+        <li>✅ Skills (Optional)</li>
+    </ul>
+
+</div>
+
+            <label>Target Company</label>
+            <input id="company" type="text" placeholder="Amazon">
+
+            <label>Target Role</label>
+
+            <input id="role" type="text" placeholder="Software Engineer, Data Scientist">
+
+            <label>Twitter/X (Optional)</label>
+            <input id="twitter" type="text" placeholder="https://x.com/username">
+
+            <label>Facebook (Optional)</label>
+
+            <input id="facebook" type="text" placeholder="https://facebook.com/username">
+
+
+
+            <button id="generateBtn" class="generate-btn">
+                Generate Resume
+            </button>
+            <div id="result"></div>
+
+        </div>
+
+    </section>
+    <script>
+
+        document.getElementById("generateBtn")
+            .addEventListener("click", async () => {
+                document.getElementById("result").innerHTML = `
+<div class="loading-card">
+
+    <h3 id="loadingTitle">
+        🔍 Analyzing GitHub...
+    </h3>
+
+    <p id="loadingText">
+        Gathering skills and projects...
+    </p>
+
+    <div class="loader"></div>
+
+</div>
+`;
+const loadingMessages = [
+    {
+        title: "🔍 Analyzing GitHub...",
+        text: "Checking repositories and skills..."
+    },
+    {
+        title: "📸 Reading LinkedIn...",
+        text: "Extracting education and experience..."
+    },
+    {
+        title: "🧠 Detecting Skills...",
+        text: "Understanding your technical profile..."
+    },
+    {
+        title: "✍️ Generating Resume...",
+        text: "Writing ATS-friendly resume content..."
+    },
+    {
+        title: "📄 Formatting Resume...",
+        text: "Preparing your final resume..."
+    },
+    {
+        title: "✨ Almost Ready...",
+        text: "Finalizing your resume preview..."
+    }
+];
+
+let loadingIndex = 0;
+
+const loading1Interval = setInterval(() => {
+    loadingIndex = (loadingIndex + 1) % loadingMessages.length;
+
+    const title = document.getElementById("loadingMessage");
+    const subText = document.getElementById("loadingSubText");
+
+    if (title && subText) {
+        title.innerText = loadingMessages[loadingIndex].title;
+        subText.innerText = loadingMessages[loadingIndex].text;
+    }
+}, 2000);
+
+const btn = document.getElementById("generateBtn");
+const loadingTitle =
+document.getElementById("loadingTitle");
+
+const loadingText =
+document.getElementById("loadingText");
+loadingTitle.innerText =
+"TEST WORKING";
+btn.disabled = true;
+btn.innerHTML = "⏳ Generating...";
+
+                const messages = [
+
+    {
+        title: "🔍 Analyzing GitHub...",
+        text: "Gathering skills and projects..."
+    },
+
+    {
+        title: "📸 Reading LinkedIn...",
+        text: "Extracting education and experience..."
+    },
+
+    {
+        title: "🧠 Understanding Profile...",
+        text: "Matching qualifications..."
+    },
+
+    {
+        title: "✍️ Writing Resume...",
+        text: "Generating ATS-optimized content..."
+    },
+
+    {
+        title: "📄 Formatting Resume...",
+        text: "Preparing final output..."
+    }
+
+];
+
+let currentMessage = 0;
+
+const loadingInterval =
+setInterval(() => {
+
+    if (currentMessage < messages.length) {
+
+        loadingTitle.style.opacity = "0";
+loadingText.style.opacity = "0";
+
+setTimeout(() => {
+
+    loadingTitle.innerText =
+    messages[currentMessage].title;
+
+    loadingText.innerText =
+    messages[currentMessage].text;
+
+    loadingTitle.style.opacity = "1";
+    loadingText.style.opacity = "1";
+
+}, 300);
+
+        currentMessage++;
+
+    }
+
+}, 2000);
+
+
+                const email =
+document.getElementById("email").value;
+
+const phone =
+document.getElementById("phone").value;
+
+const location =
+document.getElementById("location").value;
+
+                const github =
+                    document.getElementById("github").value;
+
+                const linkedinImages =
+                document.getElementById("linkedinImage").files;
+                console.log(linkedinImages);
+                
+                const company =
+                    document.getElementById("company").value;
+
+                const role =
+                    document.getElementById("role").value;
+
+document.getElementById("result").innerHTML = `
+<div class="loading-card">
+    <h3>🤖 Analyzing Your Profile</h3>
+    <p>Reviewing GitHub, LinkedIn and job requirements...</p>
+    <div class="loader"></div>
+</div>
+`;
+const formData = new FormData();
+
+for (let i = 0; i < linkedinImages.length; i++) {
+
+    formData.append(
+        "images",
+        linkedinImages[i]
+    );
+
+}const uploadResponse = await fetch(
+    "http://127.0.0.1:8000/upload-linkedin",
+    {
+        method: "POST",
+        body: formData
+    }
+);
+
+
+const uploadData =
+    await uploadResponse.json();
+
+console.log(uploadData);
+
+let linkedinData = "";
+
+if (uploadData.success) {
+
+    linkedinData =
+        uploadData.linkedin_data;
+
+}
+
+console.log(linkedinData);
+                const response = await fetch(
+                    "http://127.0.0.1:8000/generate",
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        },
+
+                        body: JSON.stringify({
+
+                            github: github,
+
+                            company: company,
+
+                            role: role,
+
+                            email: email,
+
+                            phone: phone,
+
+                            location: location,
+                            
+                            linkedin_data: linkedinData
+
+                        })
+                    }
+                );
+
+                const data =
+                    await response.json();
+
+                    loadingText.innerText =
+    "✅ Resume Ready!";
+    loadingTitle.style.transform =
+"scale(1.2)";
+
+setTimeout(() => {
+
+    loadingTitle.style.transform =
+    "scale(1)";
+
+}, 500);
+loadingText.innerText =
+"Displaying your resume...";
+                    if (!data.success) {
+
+    document.getElementById("result").innerHTML = `
+    <div class="loading-card">
+        <h3>⚠️ AI Service Busy</h3>
+        <p>Please try again later.</p>
+    </div>
+    `;
+clearInterval(
+    loadingInterval
+);
+    btn.disabled = false;
+    btn.innerHTML = "🚀 Generate Resume";
+
+    return;
+}
+                    btn.disabled = false;
+                    btn.innerHTML = "🚀 Generate Resume";
+document.getElementById("result").innerHTML = `
+<div class="preview-banner">
+    <h3>📄 Resume Preview</h3>
+    <p>
+        This is a text version of your AI-generated resume.
+        If you are satisfied, generate a professionally formatted PDF version.
+    </p>
+
+    <button id="pdfBtn" class="pdf-btn">
+        📥 Generate PDF Resume
+    </button>
+    <button id="professionalPdfBtn" class="pdf-btn">
+    📄 Download Professional Template
+</button>
+</div>
+
+<div class="github-analysis fade-in">
+
+    <h3>
+🔍 GitHub Analysis
+<span class="analysis-badge">
+    ${data.github_analysis.repo_count} Repos Found
+</span>
+</h3>
+
+    <div class="github-analysis-grid">
+
+    <div class="analysis-item">
+        👤 Username: ${data.github_analysis.username}
+    </div>
+
+    <div class="analysis-item">
+        📂 Repositories: ${data.github_analysis.repo_count}
+    </div>
+
+        <div class="analysis-item">
+
+    <strong>💻 Skills</strong>
+
+    <div class="skill-tags">
+        ${data.github_analysis.skills.map(
+            skill => `<span class="skill-tag">${skill}</span>`
+        ).join("")}
+    </div>
+    
+    </div>
+
+    <div class="analysis-item">
+        📝 Bio: ${data.github_analysis.bio}
+    </div>
+
+</div>
+
+</div>
+
+<div class="resume-card fade-in">
+    <h2>Generated Resume</h2>
+
+    <div class="resume-content">
+  ${data.resume
+.replace("PROFESSIONAL SUMMARY:","<div class='section-title'>PROFESSIONAL SUMMARY</div>")
+.replace("TECHNICAL SKILLS:","<div class='section-title'>TECHNICAL SKILLS</div>")
+.replace("PROJECTS:","<div class='section-title'>PROJECTS</div>")
+.replace("EXPERIENCE:","<div class='section-title'>EXPERIENCE</div>")
+.replace("EDUCATION:","<div class='section-title'>EDUCATION</div>")
+.replace(/\n/g,"<br>")
+}
+
+    </div>
+</div>
+`;
+            });
+document.addEventListener("click", function(e){
+
+    if(e.target.id === "pdfBtn"){
+
+        window.open(
+            "http://127.0.0.1:8000/download-pdf",
+            "_blank"
+        );
+    }
+
+});
+document.addEventListener("click", function(e){
+
+    if(e.target.id === "professionalPdfBtn"){
+
+        window.open(
+            "http://127.0.0.1:8000/download-professional-pdf",
+            "_blank"
+        );
+
+    }
+
+});
+    </script>
+    <footer class="footer">
+
+    <div class="footer-content">
+
+        <h3>🚀 ResumeForge</h3>
+
+        <p>
+            AI-powered ATS Resume Builder for students,
+            developers, and professionals.
+        </p>
+
+        <p>
+            Built by Ojus Gupta
+        </p>
+
+        <p class="copyright">
+            © 2026 ResumeForge. All Rights Reserved.
+        </p>
+
+    </div>
+
+</footer>
+</body>
+
+</html>
