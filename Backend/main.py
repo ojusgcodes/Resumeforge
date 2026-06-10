@@ -1,29 +1,29 @@
-from email.mime import image
-from urllib import response
+import os
+import html
+import requests
 
-from click import prompt
-from reportlab.pdfgen import canvas
-from fastapi.responses import FileResponse
-from reportlab.lib.utils import simpleSplit
-from fastapi import UploadFile, File
 from typing import List
 from PIL import Image
-import google.generativeai as genai
-import textwrap
-import requests
-import html
-import os
-from playwright.sync_api import sync_playwright
+
+from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+import google.generativeai as genai
+
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import simpleSplit
+
+from playwright.sync_api import sync_playwright
+
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key=GEMINI_API_KEY)
 
 model = genai.GenerativeModel("gemini-2.5-flash")
 
-from fastapi import FastAPI
-from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -35,8 +35,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class ResumeRequest(BaseModel):
 
+class ResumeRequest(BaseModel):
     github: str
     company: str
     role: str
@@ -44,8 +44,6 @@ class ResumeRequest(BaseModel):
     email: str = ""
     phone: str = ""
     location: str = ""
-    
-
 
 
 @app.get("/")
@@ -54,78 +52,95 @@ def home():
         "message": "ResumeForge Backend Running"
     }
 
+
 @app.post("/generate")
 def generate_resume(data: ResumeRequest):
 
-    github_url = data.github
+    try:
+        github_url = data.github.strip()
 
-    username = github_url.rstrip("/").split("/")[-1]
+        username = github_url.rstrip("/").split("/")[-1]
 
-    print("GitHub Username:", username)
+        print("GitHub Username:", username)
 
-    url = f"https://api.github.com/users/{username}"
+        github_warning = ""
 
-    response = requests.get(url)
+        github_data = {}
+        repos = []
 
-    github_data = response.json()
-    
-    repos_url = f"https://api.github.com/users/{username}/repos"
+        if username:
+            url = f"https://api.github.com/users/{username}"
+            github_response = requests.get(url, timeout=10)
 
-    repos_response = requests.get(repos_url)
+            if github_response.status_code == 200:
+                github_data = github_response.json()
+            else:
+                github_warning = "GitHub profile could not be analyzed properly."
 
-    repos = repos_response.json()
-    
+            repos_url = f"https://api.github.com/users/{username}/repos"
+            repos_response = requests.get(repos_url, timeout=10)
 
-    print("\nRepositories:")
+            if repos_response.status_code == 200:
+                repos = repos_response.json()
 
-    skills = set()
+                if not isinstance(repos, list):
+                    repos = []
+                    github_warning = "GitHub repositories could not be analyzed properly."
 
-    github_summary = ""
+                elif len(repos) == 0:
+                    github_warning = "No repositories found. Resume will be generated using provided information."
 
-    for repo in repos:
+            else:
+                github_warning = "GitHub repositories could not be fetched."
 
-        print("\nRepository")
+        else:
+            github_warning = "No GitHub URL provided. Resume will be generated using provided information."
 
-        print("Name:", repo.get("name"))
+        print("\nRepositories:")
 
-        print("Description:", repo.get("description"))
+        skills = set()
+        github_summary = ""
 
-        print("Language:", repo.get("language"))
+        for repo in repos:
 
-        language = repo.get("language")
+            repo_name = repo.get("name")
+            repo_description = repo.get("description")
+            repo_language = repo.get("language")
 
-    if language:
-        skills.add(language)
+            print("\nRepository")
+            print("Name:", repo_name)
+            print("Description:", repo_description)
+            print("Language:", repo_language)
+            print("----------------")
 
-        print("----------------")
+            if repo_language:
+                skills.add(repo_language)
 
-        github_summary += (
-        f"Repository: {repo.get('name')}\n"
-        f"Description: {repo.get('description')}\n"
-        f"Language: {repo.get('language')}\n\n"
-        )
-        print(github_summary)
+            github_summary += (
+                f"Repository: {repo_name}\n"
+                f"Description: {repo_description}\n"
+                f"Language: {repo_language}\n\n"
+            )
 
         print("\nSkills Found:")
 
-    for skill in skills:
-        print("-", skill)
+        for skill in skills:
+            print("-", skill)
 
+        skills_text = ", ".join(skills)
 
-    skills_text = ", ".join(skills)
-    print("Skills:", skills_text)
+        print("Skills:", skills_text)
 
+        prompt = f"""
+Create a professional ATS-optimized resume.
 
-    prompt = f"""
-    Create a professional ATS-optimized resume.
+Target Company: {data.company}
+Target Role: {data.role}
 
-    Target Company: {data.company}
-    Target Role: {data.role}
+Detected Skills:
+{skills_text}
 
-    Detected Skills:
-    {skills_text}
-
-    GitHub Profile:
+GitHub Profile:
 
 Name: {github_data.get("name")}
 Bio: {github_data.get("bio")}
@@ -134,89 +149,148 @@ Repositories:
 
 {github_summary}
 
-Use the GitHub repositories to infer projects,
-technologies and skills.
+Use the GitHub repositories to infer projects, technologies, and skills.
 
 LinkedIn Profile Information:
 
 {data.linkedin_data}
-Use the linkedIn data to infer experience, education and skills. And make the resume according to that linkedin data. 
-Analyze the LinkedIn data 
-in combination with the GitHub data to create a professional ATS resume.
 
-    Use this exact format:
+Use the LinkedIn data to infer experience, education, and skills.
+Analyze the LinkedIn data in combination with the GitHub data to create a professional ATS resume.
 
-    PROFESSIONAL SUMMARY:
-    Write a concise 3-4 line summary.
+Use this exact format:
 
-    TECHNICAL SKILLS:
-    - Skill 1
-    - Skill 2
-    - Skill 3
+PROFESSIONAL SUMMARY:
+Write a concise 3-4 line summary.
 
-    PROJECTS:
-    Project Name
-    - Description
-    - Impact
+TECHNICAL SKILLS:
+- Skill 1
+- Skill 2
+- Skill 3
 
-    EXPERIENCE:
-    - Relevant experience points
+PROJECTS:
+Project Name
+- Description
+- Impact
 
-    EDUCATION:
-    - Degree
-    - Institution
-Use the GitHub repositories to identify:
+EXPERIENCE:
+- Relevant experience points
 
-- Projects
-- Technologies
-- Skills
+EDUCATION:
+- Degree
+- Institution
 
-Do not invent projects.
-Only use information available from GitHub data.
+Rules:
+- Maximum 1 page
+- Professional tone
+- ATS friendly
+- Use bullet points
+- No unnecessary text
+- Return only the resume
+- Make it concise, impactful, and short.
+- Do not invent projects.
+- Only use information available from GitHub and LinkedIn data.
+- Do NOT use markdown.
+- Do NOT use #.
+- Do NOT use **.
+- Use plain text section headings only.
+"""
 
-    Rules:
-    - Maximum 1 page
-    - Professional tone
-    - ATS friendly
-    - Use bullet points
-    - No unnecessary text
-    - Return only the resume
-    - Make It concise and impactful and short.
-    Use this exact format.
-
-    Do NOT use markdown.
-    Do NOT use #.
-    Do NOT use **.
-    Use plain text section headings only.
-    """
-    try:
         response = model.generate_content(prompt)
-        with open("latest_resume.txt", "w", encoding="utf-8") as f:
-            f.write(response.text)
 
-            with open("latest_contact.txt", "w", encoding="utf-8") as f:
-             f.write(f"{data.email}\n")
+        resume_text = response.text
+
+        with open("latest_resume.txt", "w", encoding="utf-8") as f:
+            f.write(resume_text)
+
+        with open("latest_contact.txt", "w", encoding="utf-8") as f:
+            f.write(f"{data.email}\n")
             f.write(f"{data.phone}\n")
             f.write(f"{data.location}\n")
 
-            return {
-    "success": True,
-    "resume": response.text,
-
-    "github_analysis": {
-        "username": username,
-        "repo_count": len(repos),
-        "skills": list(skills),
-        "bio": github_data.get("bio") or "Not Available"
-    }
-}
+        return {
+            "success": True,
+            "resume": resume_text,
+            "github_analysis": {
+                "username": username,
+                "repo_count": len(repos),
+                "skills": list(skills),
+                "bio": github_data.get("bio") or "Not Available",
+                "warning": github_warning
+            }
+        }
 
     except Exception as e:
-            return {
+        print("Generate Error:", str(e))
+
+        return {
             "success": False,
             "error": str(e)
         }
-    
+
+
+@app.post("/upload-linkedin")
+async def upload_linkedin(
+    images: List[UploadFile] = File(...)
+):
+
+    try:
+        images_for_gemini = []
+
+        for image in images:
+
+            contents = await image.read()
+
+            temp_filename = f"linkedin_{image.filename}"
+
+            with open(temp_filename, "wb") as f:
+                f.write(contents)
+
+            print("Saved:", temp_filename)
+
+            with Image.open(temp_filename) as img:
+                images_for_gemini.append(
+                    img.convert("RGB").copy()
+                )
+
+        prompt = """
+Analyze all LinkedIn profile screenshots.
+
+Combine information from all screenshots.
+
+Extract:
+
+- Full Name
+- Professional Headline
+- Education
+- Experience
+- Skills
+
+Return clean structured text.
+"""
+
+        response = model.generate_content(
+            [prompt] + images_for_gemini
+        )
+
+        linkedin_data = response.text
+
+        print(linkedin_data)
+
+        return {
+            "success": True,
+            "linkedin_data": linkedin_data
+        }
+
+    except Exception as e:
+        print("LinkedIn Upload Error:", str(e))
+
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
 @app.get("/download-pdf")
 def download_pdf():
 
@@ -224,41 +298,34 @@ def download_pdf():
 
     c = canvas.Canvas(pdf_file)
 
-    c.setFont("Helvetica-Bold", 20)
-    c.setFillColorRGB(0.49, 0.23, 0.93)
-
     c.setFont("Helvetica-Bold", 24)
 
     c.drawString(
-    50,
-    800,
-    "AI GENERATED RESUME"
-)
+        50,
+        800,
+        "AI GENERATED RESUME"
+    )
 
     c.setFont("Helvetica", 11)
 
     c.drawString(
-    50,
-    780,
-    "Created with ResumeForge AI"
-)
+        50,
+        780,
+        "Created with ResumeForge AI"
+    )
 
     c.line(
-    50,
-    770,
-    550,
-    770
-)
+        50,
+        770,
+        550,
+        770
+    )
 
-    c.line(50, 790, 550, 790)
-
-    c.setFillColorRGB(0, 0, 0)
     c.setFont("Helvetica", 11)
 
-    y = 760
+    y = 740
 
     try:
-
         with open("latest_resume.txt", "r", encoding="utf-8") as f:
             lines = f.readlines()
 
@@ -267,24 +334,25 @@ def download_pdf():
             text = line.strip()
 
             wrapped_lines = simpleSplit(
-    text,
-    "Helvetica",
-    11,
-    470
-)
+                text,
+                "Helvetica",
+                11,
+                470
+            )
 
             for wrapped_line in wrapped_lines:
                 c.drawString(60, y, wrapped_line)
                 y -= 18
 
-            if y < 50:
-                break
+                if y < 50:
+                    c.showPage()
+                    c.setFont("Helvetica", 11)
+                    y = 800
 
     except Exception as e:
-
         c.drawString(
             50,
-            800,
+            740,
             f"Error: {str(e)}"
         )
 
@@ -295,8 +363,10 @@ def download_pdf():
         media_type="application/pdf",
         filename="ResumeForge_Resume.pdf"
     )
+
+
 def clean_text(text):
-        return html.escape(text or "").replace("\n", "<br>")
+    return html.escape(text or "").replace("\n", "<br>")
 
 
 def split_resume_sections(resume_text):
@@ -352,6 +422,7 @@ def format_bullets(text):
             output += f"<p>{html.escape(line)}</p>"
 
     return output
+
 
 @app.get("/download-professional-pdf")
 def download_professional_pdf():
@@ -600,56 +671,3 @@ def download_professional_pdf():
         media_type="application/pdf",
         filename="ResumeForge_Professional_Template.pdf"
     )
-@app.post("/upload-linkedin")
-async def upload_linkedin(
-    images: List[UploadFile] = File(...)
-):
-
-    saved_files = []
-
-    for i, image in enumerate(images):
-
-        contents = await image.read()
-
-        filename = f"linkedin_{i}.png"
-
-        with open(filename, "wb") as f:
-            f.write(contents)
-
-        saved_files.append(filename)
-
-        print("Saved:", filename)
-
-    images_for_gemini = []
-    saved_files = []
-    for file in saved_files:
-        with Image.open(file) as img:
-            images_for_gemini.append(img.convert("RGB").copy())
-
-
-    prompt = """
-Analyze all LinkedIn profile screenshots.
-
-Combine information from all screenshots.
-
-Extract:
-
-- Full Name
-- Professional Headline
-- Education
-- Experience
-- Skills
-
-Return clean structured text.
-"""
-
-    response = model.generate_content(
-        [prompt] + images_for_gemini
-    )
-    linkedin_data = response.text
-
-
-    return {
-    "success": True,
-    "linkedin_data": response.text
-    }
