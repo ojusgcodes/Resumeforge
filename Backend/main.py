@@ -15,6 +15,7 @@ import html
 import os
 from playwright.sync_api import sync_playwright
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key=GEMINI_API_KEY)
@@ -25,16 +26,11 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 app = FastAPI()
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://resumeforge-opal.vercel.app",
-        "http://127.0.0.1:5500",
-        "http://localhost:5500"
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
