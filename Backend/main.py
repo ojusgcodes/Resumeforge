@@ -620,13 +620,12 @@ async def upload_linkedin(
 
         print("Saved:", filename)
 
-        images_for_gemini = []
-
+    images_for_gemini = []
+    saved_files = []
     for file in saved_files:
+        with Image.open(file) as img:
+            images_for_gemini.append(img.convert("RGB").copy())
 
-        img = Image.open(file)
-
-        images_for_gemini.append(img)
 
     prompt = """
 Analyze all LinkedIn profile screenshots.
