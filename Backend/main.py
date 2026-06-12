@@ -470,116 +470,148 @@ def download_professional_pdf():
 
         <style>
             @page {{
-                size: A4;
-                margin: 0;
-            }}
+    size: A4;
+    margin: 0;
+}}
 
-            body {{
-                margin: 0;
-                padding: 0;
-                font-family: Arial, sans-serif;
-                background: #9b918c;
-                color: #222;
-            }}
+* {{
+    box-sizing: border-box;
+}}
 
-            .resume-page {{
-                width: 210mm;
-                height: 297mm;
-                display: flex;
-                background: white;
-                box-sizing: border-box;
-                padding: 18mm 16mm;
-                border: 10mm solid #9b918c;
-                position: relative;
-            }}
+html,
+body {{
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    background: white;
+    color: #222;
+}}
 
-            .resume-page::before {{
-                content: "";
-                position: absolute;
-                top: -10mm;
-                right: -10mm;
-                width: 0;
-                height: 0;
-                border-top: 16mm solid #7f7773;
-                border-left: 16mm solid transparent;
-            }}
+.resume-page {{
+    width: 210mm;
+    min-height: 297mm;
+    height: auto;
 
-            .resume-page::after {{
-                content: "";
-                position: absolute;
-                bottom: -10mm;
-                left: -10mm;
-                width: 0;
-                height: 0;
-                border-bottom: 16mm solid #7f7773;
-                border-right: 16mm solid transparent;
-            }}
+    display: flex;
+    align-items: stretch;
 
-            .sidebar {{
-                width: 35%;
-                padding-right: 18px;
-                border-right: 2px solid #b7aaa5;
-                box-sizing: border-box;
-                font-size: 12px;
-            }}
+    background: white;
 
-            .main {{
-                width: 65%;
-                padding-left: 28px;
-                box-sizing: border-box;
-            }}
+    padding: 18mm 16mm;
 
-            .contact {{
-                font-size: 11px;
-                line-height: 1.7;
-                margin-bottom: 22px;
-                color: #222;
-            }}
+    border: 10mm solid #9b918c;
 
-            .name {{
-                font-size: 34px;
-                font-weight: 300;
-                letter-spacing: 1px;
-                color: #555;
-                margin-bottom: 28px;
-            }}
+    position: relative;
 
-            .section-title {{
-                font-size: 17px;
-                color: #555;
-                margin-top: 22px;
-                margin-bottom: 8px;
-                font-weight: 500;
-            }}
+    overflow: visible;
+}}
 
-            .sidebar-title {{
-                font-size: 15px;
-                color: #555;
-                margin-top: 24px;
-                margin-bottom: 8px;
-                font-weight: 500;
-            }}
+.resume-page::before {{
+    content: "";
+    position: absolute;
+    top: -10mm;
+    right: -10mm;
+    width: 0;
+    height: 0;
+    border-top: 16mm solid #7f7773;
+    border-left: 16mm solid transparent;
+}}
 
-            p {{
-                margin: 0 0 8px 0;
-                line-height: 1.45;
-                font-size: 12px;
-            }}
+.resume-page::after {{
+    content: "";
+    position: absolute;
+    bottom: -10mm;
+    left: -10mm;
+    width: 0;
+    height: 0;
+    border-bottom: 16mm solid #7f7773;
+    border-right: 16mm solid transparent;
+}}
 
-            ul {{
-                margin: 0;
-                padding-left: 16px;
-            }}
+.sidebar {{
+    width: 34%;
+    padding-right: 16px;
+    border-right: 2px solid #b7aaa5;
+    font-size: 11px;
+}}
 
-            li {{
-                margin-bottom: 5px;
-                line-height: 1.4;
-                font-size: 12px;
-            }}
+.main {{
+    width: 66%;
+    padding-left: 24px;
+}}
 
-            .skill-list li {{
-                font-size: 11.5px;
-            }}
+.contact {{
+    font-size: 10.5px;
+    line-height: 1.6;
+    margin-bottom: 18px;
+    color: #222;
+}}
+
+.name {{
+    font-size: 30px;
+    font-weight: 300;
+    letter-spacing: 1px;
+    color: #555;
+    margin-bottom: 22px;
+}}
+
+.section-title {{
+    font-size: 15px;
+    color: #555;
+    margin-top: 18px;
+    margin-bottom: 7px;
+    font-weight: 600;
+    page-break-after: avoid;
+}}
+
+.sidebar-title {{
+    font-size: 13.5px;
+    color: #555;
+    margin-top: 20px;
+    margin-bottom: 7px;
+    font-weight: 600;
+    page-break-after: avoid;
+}}
+
+p {{
+    margin: 0 0 7px 0;
+    line-height: 1.35;
+    font-size: 11px;
+}}
+
+ul {{
+    margin: 0;
+    padding-left: 15px;
+}}
+
+li {{
+    margin-bottom: 4px;
+    line-height: 1.35;
+    font-size: 11px;
+}}
+
+.skill-list li {{
+    font-size: 10.5px;
+}}
+
+.section-block {{
+    page-break-inside: avoid;
+}}
+
+.experience-item {{
+    page-break-inside: avoid;
+    margin-bottom: 10px;
+}}
+
+@media print {{
+    body {{
+        background: white;
+    }}
+
+    .resume-page {{
+        page-break-after: auto;
+    }}
+}}
         </style>
     </head>
 
@@ -659,10 +691,17 @@ def download_professional_pdf():
         )
 
         page.pdf(
-            path=pdf_file,
-            format="A4",
-            print_background=True
-        )
+    path=pdf_file,
+    format="A4",
+    print_background=True,
+    prefer_css_page_size=True,
+    margin={
+        "top": "0",
+        "right": "0",
+        "bottom": "0",
+        "left": "0"
+    }
+)
 
         browser.close()
 
