@@ -1,6 +1,7 @@
 import os
 import html
 import requests
+import re
 
 from typing import List
 from PIL import Image
@@ -95,6 +96,17 @@ def generate_resume(data: ResumeRequest):
 
         else:
             github_warning = "No GitHub URL provided. Resume will be generated using provided information."
+
+        linkedin_name = extract_name_from_linkedin(data.linkedin_data)
+
+        github_name = github_data.get("name") or ""
+
+        candidate_name = (
+        linkedin_name
+        or github_name
+        or username
+        or "Candidate Name"
+    )
 
         print("\nRepositories:")
 
@@ -204,6 +216,7 @@ Rules:
             f.write(resume_text)
 
         with open("latest_contact.txt", "w", encoding="utf-8") as f:
+            f.write(f"{candidate_name}\n")
             f.write(f"{data.email}\n")
             f.write(f"{data.phone}\n")
             f.write(f"{data.location}\n")
@@ -227,7 +240,29 @@ Rules:
             "success": False,
             "error": str(e)
         }
+def extract_name_from_linkedin(linkedin_data):
+    if not linkedin_data:
+        return ""
 
+    patterns = [
+        r"Full Name\s*:\s*(.+)",
+        r"Name\s*:\s*(.+)",
+        r"- Full Name\s*:\s*(.+)",
+        r"- Name\s*:\s*(.+)"
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, linkedin_data, re.IGNORECASE)
+
+        if match:
+            name = match.group(1).strip()
+
+            name = name.replace("*", "").replace("#", "").strip()
+
+            if name and len(name) < 80:
+                return name
+
+    return ""
 
 @app.post("/upload-linkedin")
 async def upload_linkedin(
@@ -436,6 +471,7 @@ def download_professional_pdf():
     with open("latest_resume.txt", "r", encoding="utf-8") as f:
         resume_text = f.read()
 
+    candidate_name = "Candidate Name"
     email = "your.email@example.com"
     phone = "+91 XXXXX XXXXX"
     location = "Your City, India"
@@ -445,14 +481,17 @@ def download_professional_pdf():
         with open("latest_contact.txt", "r", encoding="utf-8") as f:
             contact_lines = f.read().splitlines()
 
-        if len(contact_lines) > 0 and contact_lines[0]:
-            email = contact_lines[0]
+    if len(contact_lines) > 0 and contact_lines[0]:
+        candidate_name = contact_lines[0]
 
-        if len(contact_lines) > 1 and contact_lines[1]:
-            phone = contact_lines[1]
+    if len(contact_lines) > 1 and contact_lines[1]:
+        email = contact_lines[1]
 
-        if len(contact_lines) > 2 and contact_lines[2]:
-            location = contact_lines[2]
+    if len(contact_lines) > 2 and contact_lines[2]:
+        phone = contact_lines[2]
+
+    if len(contact_lines) > 3 and contact_lines[3]:
+        location = contact_lines[3]
 
     sections = split_resume_sections(resume_text)
 
@@ -461,7 +500,8 @@ def download_professional_pdf():
     experience = format_bullets(sections["experience"])
     projects = format_bullets(sections["projects"])
     education = clean_text(sections["education"])
-
+    candidate_name_display = html.escape(candidate_name)
+    f
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -650,7 +690,7 @@ li {{
 
             <div class="main">
 
-                <div class="name">ResumeForge Candidate</div>
+                <div class="name">{candidate_name_display}</div>
 
                 <div class="section-title">Summary</div>
                 <p>{summary}</p>
