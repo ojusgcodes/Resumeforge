@@ -509,7 +509,7 @@ def download_professional_pdf():
         <meta charset="UTF-8">
 
         <style>
-            @page {{
+@page {{
     size: A4;
     margin: 0;
 }}
@@ -527,10 +527,52 @@ body {{
     color: #222;
 }}
 
+.page-border {{
+    position: fixed;
+    top: 0;
+    left: 0;
+
+    width: 210mm;
+    height: 297mm;
+
+    border: 10mm solid #9b918c;
+
+    z-index: 0;
+
+    pointer-events: none;
+}}
+
+.corner-top {{
+    position: fixed;
+    top: 0;
+    right: 0;
+
+    width: 0;
+    height: 0;
+
+    border-top: 16mm solid #7f7773;
+    border-left: 16mm solid transparent;
+
+    z-index: 1;
+}}
+
+.corner-bottom {{
+    position: fixed;
+    bottom: 0;
+    left: 0;
+
+    width: 0;
+    height: 0;
+
+    border-bottom: 16mm solid #7f7773;
+    border-right: 16mm solid transparent;
+
+    z-index: 1;
+}}
+
 .resume-page {{
     width: 210mm;
     min-height: 297mm;
-    height: auto;
 
     display: flex;
     align-items: stretch;
@@ -539,33 +581,8 @@ body {{
 
     padding: 18mm 16mm;
 
-    border: 10mm solid #9b918c;
-
     position: relative;
-
-    overflow: visible;
-}}
-
-.resume-page::before {{
-    content: "";
-    position: absolute;
-    top: -10mm;
-    right: -10mm;
-    width: 0;
-    height: 0;
-    border-top: 16mm solid #7f7773;
-    border-left: 16mm solid transparent;
-}}
-
-.resume-page::after {{
-    content: "";
-    position: absolute;
-    bottom: -10mm;
-    left: -10mm;
-    width: 0;
-    height: 0;
-    border-bottom: 16mm solid #7f7773;
-    border-right: 16mm solid transparent;
+    z-index: 2;
 }}
 
 .sidebar {{
@@ -601,7 +618,7 @@ body {{
     margin-top: 18px;
     margin-bottom: 7px;
     font-weight: 600;
-    page-break-after: avoid;
+    break-after: avoid;
 }}
 
 .sidebar-title {{
@@ -610,7 +627,7 @@ body {{
     margin-top: 20px;
     margin-bottom: 7px;
     font-weight: 600;
-    page-break-after: avoid;
+    break-after: avoid;
 }}
 
 p {{
@@ -634,29 +651,17 @@ li {{
     font-size: 10.5px;
 }}
 
-.section-block {{
-    page-break-inside: avoid;
-}}
-
+.section-block,
 .experience-item {{
-    page-break-inside: avoid;
-    margin-bottom: 10px;
-}}
-
-@media print {{
-    body {{
-        background: white;
-    }}
-
-    .resume-page {{
-        page-break-after: auto;
-    }}
+    break-inside: avoid;
 }}
         </style>
     </head>
 
     <body>
-
+<div class="page-border"></div>
+<div class="corner-top"></div>
+<div class="corner-bottom"></div>
         <div class="resume-page">
 
             <div class="sidebar">
