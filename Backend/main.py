@@ -144,68 +144,72 @@ def generate_resume(data: ResumeRequest):
         print("Skills:", skills_text)
 
         prompt = f"""
-Create a professional ATS-optimized resume.
+You are an expert resume writer and ATS optimization specialist.
 
-Target Company: {data.company}
-Target Role: {data.role}
+Create a detailed, professional, ATS-friendly resume for the following target:
 
-Detected Skills:
-{skills_text}
+Target Company:
+{data.company}
 
-GitHub Profile:
+Target Role:
+{data.role}
 
-Name: {github_data.get("name")}
-Bio: {github_data.get("bio")}
-
-Repositories:
-
+GitHub Profile Analysis:
 {github_summary}
 
-Use the GitHub repositories to infer projects, technologies, and skills.
+Detected GitHub Skills:
+{skills_text}
 
 LinkedIn Profile Information:
-
 {data.linkedin_data}
 
-Use the LinkedIn data to infer experience, education, and skills.
-Analyze the LinkedIn data in combination with the GitHub data to create a professional ATS resume.
+Instructions:
 
-Use this exact format:
+1. Write a strong professional resume, not a short summary.
 
-PROFESSIONAL SUMMARY:
-Write a concise 3-4 line summary.
+2. Use this exact structure:
 
-TECHNICAL SKILLS:
-- Skill 1
-- Skill 2
-- Skill 3
+PROFESSIONAL SUMMARY
+Write 4-5 detailed lines.
+Mention years of experience if available.
+Mention target role alignment.
+Mention key domains, tools, leadership, and measurable impact.
 
-PROJECTS:
-Project Name
-- Description
-- Impact
+TECHNICAL SKILLS
+Group skills into categories.
+Example:
+- Programming: Python, JavaScript, TypeScript
+- Product/Tools: Product Management, Analytics, GitHub
+- Platforms: Cloud, APIs, Databases
 
-EXPERIENCE:
-- Relevant experience points
+EXPERIENCE
+For each role, write:
+Job Title, Company, Dates, Location if available.
+Then write 2-4 strong bullet points.
+Each bullet should include action + responsibility + impact.
+Use metrics if available.
+Do not make bullets too short.
 
-EDUCATION:
-- Degree
-- Institution
+PROJECTS
+Include GitHub projects if available.
+For each project, write:
+Project name
+- What it does
+- Technologies used
+- Impact or learning outcome
+
+EDUCATION
+Include education details from LinkedIn if available.
 
 Rules:
-- Maximum 1 page
-- Professional tone
-- ATS friendly
-- Use bullet points
-- No unnecessary text
-- Return only the resume
-- Make it concise, impactful, and short.
-- Do not invent projects.
-- Only use information available from GitHub and LinkedIn data.
-- Do NOT use markdown.
-- Do NOT use #.
-- Do NOT use **.
-- Use plain text section headings only.
+- Make the resume detailed but still professional.
+- Do not invent fake companies, fake degrees, or fake metrics.
+- If exact metrics are missing, describe impact honestly without numbers.
+- Use clear bullet points.
+- Avoid long paragraphs except in Professional Summary.
+- Optimize for ATS keywords related to the target role.
+- Do not include markdown tables.
+- Do not include extra explanations outside the resume.
 """
 
         response = model.generate_content(prompt)
@@ -445,13 +449,14 @@ def format_bullets(text):
     output = ""
 
     for line in text.splitlines():
-
         line = line.strip()
 
         if not line:
             continue
 
         if line.startswith("-"):
+            output += f"<li>{html.escape(line[1:].strip())}</li>"
+        elif line.startswith("•"):
             output += f"<li>{html.escape(line[1:].strip())}</li>"
         else:
             output += f"<p>{html.escape(line)}</p>"
@@ -579,80 +584,87 @@ body {{
 
     background: white;
 
-    padding: 18mm 16mm;
+    padding: 14mm 12mm;
 
     position: relative;
     z-index: 2;
 }}
 
 .sidebar {{
-    width: 34%;
-    padding-right: 16px;
+    width: 32%;
+    padding-right: 12px;
     border-right: 2px solid #b7aaa5;
-    font-size: 11px;
+    font-size: 10px;
 }}
 
 .main {{
-    width: 66%;
-    padding-left: 24px;
+    width: 68%;
+    padding-left: 18px;
 }}
 
 .contact {{
-    font-size: 10.5px;
-    line-height: 1.6;
-    margin-bottom: 18px;
+    font-size: 9.5px;
+    line-height: 1.3;
+    margin-bottom: 12px;
     color: #222;
 }}
 
+
 .name {{
-    font-size: 30px;
+    font-size: 26px;
     font-weight: 300;
     letter-spacing: 1px;
     color: #555;
-    margin-bottom: 22px;
+    margin-bottom: 14px;
 }}
 
 .section-title {{
-    font-size: 15px;
+    font-size: 13.5px;
     color: #555;
-    margin-top: 18px;
-    margin-bottom: 7px;
-    font-weight: 600;
+    margin-top: 12px;
+    margin-bottom: 4px;
+    font-weight: 700;
     break-after: avoid;
 }}
 
 .sidebar-title {{
-    font-size: 13.5px;
+    font-size: 12px;
     color: #555;
-    margin-top: 20px;
-    margin-bottom: 7px;
-    font-weight: 600;
+    margin-top: 13px;
+    margin-bottom: 4px;
+    font-weight: 700;
     break-after: avoid;
 }}
 
 p {{
-    margin: 0 0 7px 0;
-    line-height: 1.35;
-    font-size: 11px;
+    margin: 0 0 4px 0;
+    line-height: 1.22;
+    font-size: 9.8px;
 }}
 
 ul {{
     margin: 0;
-    padding-left: 15px;
+    padding-left: 12px;
 }}
 
 li {{
-    margin-bottom: 4px;
-    line-height: 1.35;
-    font-size: 11px;
+    margin-bottom: 2.5px;
+    line-height: 1.22;
+    font-size: 9.8px;
 }}
+
+.experience-item {{
+    margin-bottom: 6px;
+    break-inside: avoid;
+}}
+
 
 .skill-list li {{
-    font-size: 10.5px;
+    font-size: 9.5px;
+    margin-bottom: 2px;
 }}
 
-.section-block,
-.experience-item {{
+.section-block {{
     break-inside: avoid;
 }}
         </style>
