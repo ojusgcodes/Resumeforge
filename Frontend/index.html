@@ -1126,79 +1126,77 @@ if (!data.resume) {
                 btn.disabled = false;
                 btn.innerHTML = "🚀 Generate Resume";
 document.getElementById("result").innerHTML = `
-<div class="preview-banner">
-    <h3>📄 Resume Preview</h3>
-    <p>
-        This is a text version of your AI-generated resume.
-        If you are satisfied, generate a professionally formatted PDF version.
-    </p>
+    <div class="github-analysis fade-in">
 
-    <button id="pdfBtn" class="pdf-btn">
-        📥 Generate PDF Resume
-    </button>
-    <button id="professionalPdfBtn" class="pdf-btn">
-    📄 Download Professional Template
-</button>
-</div>
+        <h3>
+            🔍 GitHub Analysis
+            <span class="analysis-badge">
+                ${data.github_analysis.repo_count} Repos Found
+            </span>
+        </h3>
 
-<div class="resume-content">
-    ${data.resume.replace(/\n/g, "<br>")}
-</div>
+        <div class="github-analysis-grid">
 
-<div class="github-analysis fade-in">
+            <div class="analysis-item">
+                👤 <strong>Username:</strong> ${data.github_analysis.username}
+            </div>
 
-    <h3>
-🔍 GitHub Analysis
-<span class="analysis-badge">
-    ${data.github_analysis.repo_count} Repos Found
-</span>
-</h3>
+            <div class="analysis-item">
+                📁 <strong>Repositories:</strong> ${data.github_analysis.repo_count}
+            </div>
 
-    <div class="github-analysis-grid">
+            <div class="analysis-item">
+                💻 <strong>Skills</strong><br>
+                ${data.github_analysis.skills.join(", ")}
+            </div>
 
-    <div class="analysis-item">
-        👤 Username: ${data.github_analysis.username}
-    </div>
+            <div class="analysis-item">
+                📝 <strong>Bio:</strong> ${data.github_analysis.bio}
+            </div>
 
-    <div class="analysis-item">
-        📂 Repositories: ${data.github_analysis.repo_count}
-    </div>
-
-        <div class="analysis-item">
-
-    <strong>💻 Skills</strong>
-
-    <div class="skill-tags">
-        ${data.github_analysis.skills.map(
-            skill => `<span class="skill-tag">${skill}</span>`
-        ).join("")}
-    </div>
-    
-    </div>
-
-    <div class="analysis-item">
-        📝 Bio: ${data.github_analysis.bio}
-    </div>
-
-</div>
-
-</div>
-
-<div class="resume-card fade-in">
-    <h2>Generated Resume</h2>
-
-    <div class="resume-content">
-  ${data.resume
-.replace("PROFESSIONAL SUMMARY:","<div class='section-title'>PROFESSIONAL SUMMARY</div>")
-.replace("TECHNICAL SKILLS:","<div class='section-title'>TECHNICAL SKILLS</div>")
-.replace("PROJECTS:","<div class='section-title'>PROJECTS</div>")
-.replace("EXPERIENCE:","<div class='section-title'>EXPERIENCE</div>")
-.replace("EDUCATION:","<div class='section-title'>EDUCATION</div>")
-.replace(/\n/g,"<br>")
-}
+        </div>
 
     </div>
-</div>
+
+    <div class="resume-card fade-in">
+
+        <h2>Generated Resume</h2>
+
+        <div class="resume-content">
+            ${data.resume
+                .replace("PROFESSIONAL SUMMARY:", "<div class='section-title'>PROFESSIONAL SUMMARY</div>")
+                .replace("TECHNICAL SKILLS:", "<div class='section-title'>TECHNICAL SKILLS</div>")
+                .replace("PROJECTS:", "<div class='section-title'>PROJECTS</div>")
+                .replace("EXPERIENCE:", "<div class='section-title'>EXPERIENCE</div>")
+                .replace("EDUCATION:", "<div class='section-title'>EDUCATION</div>")
+                .replace(/\n/g, "<br>")
+            }
+        </div>
+
+    </div>
+
+    <div class="preview-banner fade-in">
+
+        <h3>📄 Resume Preview</h3>
+
+        <p>
+            This is a text version of your AI-generated resume.
+            If you are satisfied, generate a professionally formatted PDF version.
+        </p>
+
+        <button id="pdfBtn" class="pdf-btn">
+            📥 Generate PDF Resume
+        </button>
+
+        <button id="professionalPdfBtn" class="pdf-btn">
+            📄 Download Professional Template
+        </button>
+
+        <button id="copyResumeBtn" class="pdf-btn copy-btn">
+            📋 Copy Resume
+        </button>
+
+    </div>
 `;
             });
 document.addEventListener("click", function(e){
