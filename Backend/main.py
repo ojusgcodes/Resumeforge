@@ -230,6 +230,20 @@ Formatting rules:
 - Use maximum 5 most relevant experience roles.
 - Use maximum 2-3 bullets per role.
 - Use maximum 2 strongest projects.
+
+Resume length and detail rules:
+- The resume should feel like a complete one-page professional resume.
+- Do not make the resume too short.
+- Professional Summary should be 4-5 strong lines.
+- Technical Skills should include 12-18 relevant skills grouped into categories.
+- Experience should include 3-4 bullet points for major roles.
+- Each bullet should explain action, responsibility, and impact.
+- Include achievements from education if available.
+- Include Projects if available from LinkedIn or GitHub.
+- If projects are not available, expand Experience and Education enough to make the resume feel complete.
+- Do not leave large empty space on a one-page resume.
+- Keep the resume detailed but not fake.
+- Do not invent fake companies, fake degrees, or fake metrics.
 """
 
         response = model.generate_content(prompt)
@@ -695,54 +709,53 @@ body {{
 }}
 
 .sidebar {{
-    width: 31%;
-    padding-right: 10px;
+    width: 32%;
+    padding-right: 12px;
     border-right: 2px solid #b7aaa5;
-    font-size: 9.3px;
+    font-size: 10px;
 }}
-
 .main {{
-    width: 69%;
-    padding-left: 16px;
+    width: 68%;
+    padding-left: 18px;
 }}
 
 .contact {{
-    font-size: 9.5px;
-    line-height: 1.3;
-    margin-bottom: 12px;
+    font-size: 10px;
+    line-height: 1.35;
+    margin-bottom: 14px;
     color: #222;
 }}
 
 
 .name {{
-    font-size: 25px;
+    font-size: 30px;
     font-weight: 300;
     letter-spacing: 1px;
     color: #555;
-    margin-bottom: 12px;
+    margin-bottom: 16px;
 }}
 
 .section-title {{
-    font-size: 12.5px;
+    font-size: 14px;
     color: #555;
-    margin-top: 10px;
-    margin-bottom: 3px;
+    margin-top: 14px;
+    margin-bottom: 5px;
     font-weight: 700;
     break-after: avoid;
 }}
 
 .sidebar-title {{
-    font-size: 11.5px;
+    font-size: 12.5px;
     color: #555;
-    margin-top: 11px;
-    margin-bottom: 3px;
+    margin-top: 14px;
+    margin-bottom: 5px;
     font-weight: 700;
     break-after: avoid;
 }}
 p {{
-    margin: 0 0 3px 0;
-    line-height: 1.16;
-    font-size: 9px;
+    margin: 0 0 5px 0;
+    line-height: 1.28;
+    font-size: 10.3px;
 }}
 
 ul {{
@@ -751,9 +764,9 @@ ul {{
 }}
 
 li {{
-    margin-bottom: 2px;
-    line-height: 1.16;
-    font-size: 9px;
+    margin-bottom: 3.5px;
+    line-height: 1.28;
+    font-size: 10.3px;
 }}
 
 .experience-item {{
@@ -763,10 +776,9 @@ li {{
 
 
 .skill-list li {{
-    font-size: 8.8px;
-    margin-bottom: 1.5px;
+    font-size: 9.8px;
+    margin-bottom: 3px;
 }}
-
 .section-block {{
     break-inside: avoid;
 }}
