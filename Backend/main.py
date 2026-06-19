@@ -219,14 +219,27 @@ Rules:
 - Do not include extra explanations outside the resume.
 
 If the user uploaded LinkedIn screenshots containing projects, those projects must be included in the final resume.
+Formatting rules:
+- Do not use markdown bold symbols like **.
+- Do not use separator lines like ---.
+- Use plain section headings only.
+- Use simple dash bullets.
+- Keep the resume detailed but compact.
+- For professional PDF, avoid making one tiny leftover section spill onto a second page.
+- Use maximum 12-15 core skills.
+- Use maximum 5 most relevant experience roles.
+- Use maximum 2-3 bullets per role.
+- Use maximum 2 strongest projects.
 """
 
         response = model.generate_content(prompt)
 
         resume_text = response.text
 
+        cleaned_resume = clean_resume_markdown(response.text)
+
         with open("latest_resume.txt", "w", encoding="utf-8") as f:
-            f.write(resume_text)
+            f.write(cleaned_resume)
 
         with open("latest_contact.txt", "w", encoding="utf-8") as f:
             f.write(f"{candidate_name}\n")
@@ -236,7 +249,7 @@ If the user uploaded LinkedIn screenshots containing projects, those projects mu
 
         return {
             "success": True,
-            "resume": resume_text,
+            "resume": cleaned_resume,
             "github_analysis": {
                 "username": username,
                 "repo_count": len(repos),
@@ -253,6 +266,29 @@ If the user uploaded LinkedIn screenshots containing projects, those projects mu
             "success": False,
             "error": str(e)
         }
+
+def clean_resume_markdown(text):
+    if not text:
+        return ""
+
+    text = text.replace("\u00ad", "")
+
+    # Remove bold markdown
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+
+    # Remove markdown headings
+    text = text.replace("#", "")
+
+    # Convert star bullets to dash bullets
+    text = re.sub(r"^\s*\*\s+", "- ", text, flags=re.MULTILINE)
+
+    # Remove separator lines like --- or --
+    text = re.sub(r"^\s*[-–—_]{2,}\s*$", "", text, flags=re.MULTILINE)
+
+    # Remove extra blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
 def extract_name_from_linkedin(linkedin_data):
     if not linkedin_data:
         return ""
@@ -449,7 +485,9 @@ def download_pdf():
 
 
 def clean_text(text):
-    return html.escape(text or "").replace("\n", "<br>")
+    text = clean_resume_markdown(text or "")
+    return html.escape(text).replace("\n", "<br>")
+
 
 
 def split_resume_sections(resume_text):
@@ -492,21 +530,30 @@ def split_resume_sections(resume_text):
 def format_bullets(text):
     output = ""
 
+    text = clean_resume_markdown(text or "")
+
     for line in text.splitlines():
         line = line.strip()
 
         if not line:
             continue
 
+        if re.fullmatch(r"[-–—_]{2,}", line):
+            continue
+
         if line.startswith("-"):
             output += f"<li>{html.escape(line[1:].strip())}</li>"
+
         elif line.startswith("•"):
             output += f"<li>{html.escape(line[1:].strip())}</li>"
+
+        elif line.startswith("*"):
+            output += f"<li>{html.escape(line[1:].strip())}</li>"
+
         else:
             output += f"<p>{html.escape(line)}</p>"
 
     return output
-
 
 @app.get("/download-professional-pdf")
 def download_professional_pdf():
@@ -548,6 +595,7 @@ def download_professional_pdf():
     skills = format_bullets(sections["skills"])
     experience = format_bullets(sections["experience"])
     projects = format_bullets(sections["projects"])
+    
     projects_section_html = ""
 
     if projects.strip():
@@ -637,22 +685,25 @@ body {{
 
     background: white;
 
-    padding: 14mm 12mm;
+    padding: 12mm 11mm;
 
     position: relative;
     z-index: 2;
+
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
 }}
 
 .sidebar {{
-    width: 32%;
-    padding-right: 12px;
+    width: 31%;
+    padding-right: 10px;
     border-right: 2px solid #b7aaa5;
-    font-size: 10px;
+    font-size: 9.3px;
 }}
 
 .main {{
-    width: 68%;
-    padding-left: 18px;
+    width: 69%;
+    padding-left: 16px;
 }}
 
 .contact {{
@@ -664,35 +715,34 @@ body {{
 
 
 .name {{
-    font-size: 26px;
+    font-size: 25px;
     font-weight: 300;
     letter-spacing: 1px;
     color: #555;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
 }}
 
 .section-title {{
-    font-size: 13.5px;
+    font-size: 12.5px;
     color: #555;
-    margin-top: 12px;
-    margin-bottom: 4px;
+    margin-top: 10px;
+    margin-bottom: 3px;
     font-weight: 700;
     break-after: avoid;
 }}
 
 .sidebar-title {{
-    font-size: 12px;
+    font-size: 11.5px;
     color: #555;
-    margin-top: 13px;
-    margin-bottom: 4px;
+    margin-top: 11px;
+    margin-bottom: 3px;
     font-weight: 700;
     break-after: avoid;
 }}
-
 p {{
-    margin: 0 0 4px 0;
-    line-height: 1.22;
-    font-size: 9.8px;
+    margin: 0 0 3px 0;
+    line-height: 1.16;
+    font-size: 9px;
 }}
 
 ul {{
@@ -701,9 +751,9 @@ ul {{
 }}
 
 li {{
-    margin-bottom: 2.5px;
-    line-height: 1.22;
-    font-size: 9.8px;
+    margin-bottom: 2px;
+    line-height: 1.16;
+    font-size: 9px;
 }}
 
 .experience-item {{
@@ -713,8 +763,8 @@ li {{
 
 
 .skill-list li {{
-    font-size: 9.5px;
-    margin-bottom: 2px;
+    font-size: 8.8px;
+    margin-bottom: 1.5px;
 }}
 
 .section-block {{
