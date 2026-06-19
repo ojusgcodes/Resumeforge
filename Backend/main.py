@@ -191,12 +191,19 @@ Use metrics if available.
 Do not make bullets too short.
 
 PROJECTS
-Include GitHub projects if available.
-For each project, write:
-Project name
-- What it does
-- Technologies used
-- Impact or learning outcome
+Create a detailed Projects section using both LinkedIn extracted projects and GitHub repositories.
+
+Rules:
+- If LinkedIn Profile Information contains projects, include them.
+- If GitHub repositories are available, include the strongest repositories as projects.
+- If both LinkedIn projects and GitHub repositories exist, combine them intelligently.
+- For each project, write:
+  Project Name
+  - What the project does
+  - Technologies used
+  - Impact, purpose, or result
+- Do not leave the Projects section empty.
+- If no projects are available from either LinkedIn or GitHub, completely omit the Projects section.
 
 EDUCATION
 Include education details from LinkedIn if available.
@@ -210,6 +217,8 @@ Rules:
 - Optimize for ATS keywords related to the target role.
 - Do not include markdown tables.
 - Do not include extra explanations outside the resume.
+
+If the user uploaded LinkedIn screenshots containing projects, those projects must be included in the final resume.
 """
 
         response = model.generate_content(prompt)
@@ -297,15 +306,50 @@ Analyze all LinkedIn profile screenshots.
 
 Combine information from all screenshots.
 
-Extract:
+Extract the following information carefully:
 
 - Full Name
 - Professional Headline
+- Contact information if visible
 - Education
 - Experience
+- Projects
 - Skills
+- Certifications if visible
 
-Return clean structured text.
+For Projects, extract:
+- Project name
+- Project description
+- Technologies used
+- Results, impact, or purpose if visible
+
+Important:
+Do not ignore the Projects section if it appears in any screenshot.
+If a screenshot contains projects, include them clearly.
+If projects are not visible, write: Projects: Not found.
+
+Return clean structured text in this format:
+
+FULL NAME:
+...
+
+HEADLINE:
+...
+
+EDUCATION:
+...
+
+EXPERIENCE:
+...
+
+PROJECTS:
+- Project Name:
+  Description:
+  Technologies:
+  Impact:
+
+SKILLS:
+...
 """
 
         response = model.generate_content(
@@ -504,6 +548,15 @@ def download_professional_pdf():
     skills = format_bullets(sections["skills"])
     experience = format_bullets(sections["experience"])
     projects = format_bullets(sections["projects"])
+    projects_section_html = ""
+
+    if projects.strip():
+        projects_section_html = f"""
+    <div class="section-title">Projects</div>
+    <ul>
+        {projects}
+    </ul>
+    """
     education = clean_text(sections["education"])
     candidate_name_display = html.escape(candidate_name)
     f
@@ -717,10 +770,7 @@ li {{
                     {experience}
                 </ul>
 
-                <div class="section-title">Projects</div>
-                <ul>
-                    {projects}
-                </ul>
+                {projects_section_html}
 
             </div>
 
