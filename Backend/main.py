@@ -244,6 +244,46 @@ Resume length and detail rules:
 - Do not leave large empty space on a one-page resume.
 - Keep the resume detailed but not fake.
 - Do not invent fake companies, fake degrees, or fake metrics.
+
+Truthfulness rules:
+- Use only facts clearly present in the GitHub data, LinkedIn extraction, or user-provided details.
+- Do not invent metrics, revenue impact, customer counts, team sizes, degrees, certifications, acquisitions, company rankings, or technical ownership.
+- Do not infer that a project was deployed, used by customers, or successful unless the source explicitly says so.
+- If a metric is not available, use neutral wording instead of inventing impact.
+- Do not write phrases such as “significantly improved,” “industry-leading,” “India’s leading,” “successfully exited,” or “reduced churn” unless the source data explicitly proves them.
+- Do not infer education degree names or grades.
+
+Target company rule:
+- Use the target company and role only to choose relevant keywords and prioritize relevant skills.
+- Never mention the target company name in the final resume.
+- Never write “seeking to join [company name]” in the summary.
+- Keep the final resume reusable for multiple job applications.
+
+Skills rules:
+- Include only 10 to 15 high-signal skills.
+- Group skills into 3 or 4 categories only.
+- Prefer concrete tools, languages, frameworks, cloud platforms, and domains.
+- Do not include generic skills such as “Software Development,” “Problem Solving,” “Leadership,” or “Communication” unless they are directly relevant and supported by experience.
+- Do not repeat the same skill in multiple categories.
+
+Project selection rule:
+- For candidates with 8 or more years of experience, include projects only if they are highly relevant, recent, and stronger than older academic projects.
+- For senior professionals, prefer work achievements over college projects.
+- For students and freshers, include 1 to 2 strong projects.
+- Omit weak or irrelevant projects instead of filling space.
+
+Resume length rule:
+- For students and candidates with under 5 years of experience, create a one-page resume.
+- For candidates with 5 to 10 years of experience, use one page only if content remains readable.
+- For candidates with more than 10 years of experience, create a detailed two-page resume.
+- Never shrink fonts too much just to force content into one page.
+- Never create a second page containing only one small leftover project.
+
+One-page completeness rule:
+- For one-page resumes, fill most of the page with meaningful verified content.
+- Expand education, certifications, coursework, projects, GitHub work, and internship details when they are available.
+- Do not invent content to fill space.
+- If the candidate has limited experience, prioritize projects and technical work over generic interests.
 """
 
         response = model.generate_content(prompt)
@@ -408,7 +448,11 @@ SKILLS:
 
         linkedin_data = response.text
 
-        print(linkedin_data)
+        for file in images_for_gemini:
+            if os.path.exists(file):
+                os.remove(file)
+
+        print("LinkedIn extraction completed successfully.")
 
         return {
             "success": True,
@@ -753,9 +797,9 @@ body {{
     break-after: avoid;
 }}
 p {{
-    margin: 0 0 5px 0;
+    font-size: 10px;
     line-height: 1.28;
-    font-size: 10.3px;
+    margin: 0 0 5px 0;
 }}
 
 ul {{
@@ -764,10 +808,11 @@ ul {{
 }}
 
 li {{
-    margin-bottom: 3.5px;
+    font-size: 10px;
     line-height: 1.28;
-    font-size: 10.3px;
+    margin-bottom: 3px;
 }}
+
 
 .experience-item {{
     margin-bottom: 6px;
@@ -776,8 +821,8 @@ li {{
 
 
 .skill-list li {{
-    font-size: 9.8px;
-    margin-bottom: 3px;
+    font-size: 9.5px;
+    margin-bottom: 2px;
 }}
 .section-block {{
     break-inside: avoid;
