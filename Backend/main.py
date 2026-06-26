@@ -1,10 +1,26 @@
 import os
+import io
 import html
 import requests
 import re
+import sqlite3
+import hashlib
+import hmac
+import secrets
+import time
 
-from typing import List
+from typing import List, Optional
 from PIL import Image
+
+try:
+    from pypdf import PdfReader
+except ImportError:
+    PdfReader = None
+
+
+# LinkedIn PDF upload safety limits
+MAX_PDF_BYTES = 10 * 1024 * 1024   # 10 MB
+MAX_PDF_PAGES = 15                  # LinkedIn exports are usually 2-6 pages
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import FileResponse
@@ -52,6 +68,551 @@ def home():
     return {
         "message": "ResumeForge Backend Running"
     }
+
+
+# ============================================================
+# AUTHENTICATION (SQLite + PBKDF2 password hashing + tokens)
+# ============================================================
+
+from fastapi import Header
+
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db")
+
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    conn = get_db()
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            created_at REAL NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            created_at REAL NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+init_db()
+
+
+def hash_password(password, salt):
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        200_000
+    ).hex()
+
+
+def normalize_email(email):
+    return (email or "").strip().lower()
+
+
+class SignupRequest(BaseModel):
+    name: str = ""
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+def user_to_public(row):
+    return {"name": row["name"], "email": row["email"]}
+
+
+def get_user_from_token(authorization):
+    """Return the user row for a 'Bearer <token>' header, or None."""
+    if not authorization:
+        return None
+
+    parts = authorization.split(" ", 1)
+    token = parts[1].strip() if len(parts) == 2 else authorization.strip()
+
+    if not token:
+        return None
+
+    conn = get_db()
+    sess = conn.execute(
+        "SELECT email FROM sessions WHERE token = ?",
+        (token,)
+    ).fetchone()
+
+    if not sess:
+        conn.close()
+        return None
+
+    user = conn.execute(
+        "SELECT * FROM users WHERE email = ?",
+        (sess["email"],)
+    ).fetchone()
+    conn.close()
+    return user
+
+
+@app.post("/signup")
+def signup(data: SignupRequest):
+    email = normalize_email(data.email)
+    name = (data.name or "").strip() or email.split("@")[0]
+    password = data.password or ""
+
+    if "@" not in email or "." not in email:
+        return {"success": False, "error": "Please enter a valid email address."}
+
+    if len(password) < 6:
+        return {"success": False, "error": "Password must be at least 6 characters."}
+
+    conn = get_db()
+    existing = conn.execute(
+        "SELECT id FROM users WHERE email = ?",
+        (email,)
+    ).fetchone()
+
+    if existing:
+        conn.close()
+        return {"success": False, "error": "An account with this email already exists."}
+
+    salt = secrets.token_hex(16)
+    pwd_hash = hash_password(password, salt)
+
+    conn.execute(
+        "INSERT INTO users (name, email, password_hash, salt, created_at) VALUES (?, ?, ?, ?, ?)",
+        (name, email, pwd_hash, salt, time.time())
+    )
+
+    token = secrets.token_hex(32)
+    conn.execute(
+        "INSERT INTO sessions (token, email, created_at) VALUES (?, ?, ?)",
+        (token, email, time.time())
+    )
+    conn.commit()
+    conn.close()
+
+    return {"success": True, "token": token, "name": name, "email": email}
+
+
+@app.post("/login")
+def login(data: LoginRequest):
+    email = normalize_email(data.email)
+    password = data.password or ""
+
+    conn = get_db()
+    user = conn.execute(
+        "SELECT * FROM users WHERE email = ?",
+        (email,)
+    ).fetchone()
+
+    if not user:
+        conn.close()
+        return {"success": False, "error": "Invalid email or password."}
+
+    expected = user["password_hash"]
+    actual = hash_password(password, user["salt"])
+
+    if not hmac.compare_digest(expected, actual):
+        conn.close()
+        return {"success": False, "error": "Invalid email or password."}
+
+    token = secrets.token_hex(32)
+    conn.execute(
+        "INSERT INTO sessions (token, email, created_at) VALUES (?, ?, ?)",
+        (token, email, time.time())
+    )
+    conn.commit()
+    conn.close()
+
+    return {"success": True, "token": token, "name": user["name"], "email": email}
+
+
+@app.get("/me")
+def me(authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Not authenticated."}
+    return {"success": True, **user_to_public(user)}
+
+
+@app.post("/logout")
+def logout(authorization: Optional[str] = Header(None)):
+    if authorization:
+        parts = authorization.split(" ", 1)
+        token = parts[1].strip() if len(parts) == 2 else authorization.strip()
+        if token:
+            conn = get_db()
+            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            conn.commit()
+            conn.close()
+    return {"success": True}
+
+
+# ============================================================
+# CHATBOT RESUME EDITING
+# ============================================================
+
+class ChatEditRequest(BaseModel):
+    resume: str
+    instruction: str
+    company: str = ""
+    role: str = ""
+
+
+class SaveResumeRequest(BaseModel):
+    resume: str
+
+
+@app.post("/chat-edit")
+def chat_edit(data: ChatEditRequest):
+    current = (data.resume or "").strip()
+    instruction = (data.instruction or "").strip()
+
+    if not current:
+        return {"success": False, "error": "No resume to edit. Generate a resume first."}
+
+    if not instruction:
+        return {"success": False, "error": "Please describe the change you want."}
+
+    prompt = f"""
+You are an expert resume editor. Edit the resume below based ONLY on the user's request.
+
+CURRENT RESUME:
+{current}
+
+USER REQUEST:
+{instruction}
+
+Rules:
+- Apply ONLY the change the user asked for. Leave everything else exactly as it is.
+- Keep the SAME section headings exactly as written (for example: PROFESSIONAL SUMMARY,
+  TECHNICAL SKILLS, EXPERIENCE, PROJECTS, EDUCATION) so the resume formatting stays intact.
+- Stay truthful. Do not invent fake jobs, employers, dates, degrees, or metrics.
+- Keep it concise and ATS-friendly.
+- Target company: {data.company or "N/A"}. Target role: {data.role or "N/A"}.
+- Return ONLY the full, updated resume text. No commentary, no explanations, no code fences.
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        updated = clean_resume_markdown(response.text or "")
+    except Exception as e:
+        print("Chat edit error:", str(e))
+        return {"success": False, "error": "The editor is unavailable right now. Please try again."}
+
+    if not updated:
+        return {"success": False, "error": "The edit came back empty. Please rephrase your request."}
+
+    with open("latest_resume.txt", "w", encoding="utf-8") as f:
+        f.write(updated)
+
+    return {
+        "success": True,
+        "resume": updated,
+        "message": "Done — I've updated your resume."
+    }
+
+
+@app.post("/save-resume")
+def save_resume(data: SaveResumeRequest):
+    """Persist a given resume text (used by the Undo button so the
+    downloadable PDF matches what's shown on screen)."""
+    text = (data.resume or "").strip()
+    if not text:
+        return {"success": False, "error": "Nothing to save."}
+
+    with open("latest_resume.txt", "w", encoding="utf-8") as f:
+        f.write(text)
+
+    return {"success": True}
+
+
+# ============================================================
+# RESUME TEMPLATE GALLERY (multiple downloadable PDF designs)
+# ============================================================
+
+def render_html_to_pdf(html_content, basename):
+    html_file = f"{basename}.html"
+    pdf_file = f"{basename}.pdf"
+    with open(html_file, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto("file://" + os.path.abspath(html_file), wait_until="networkidle")
+        page.pdf(
+            path=pdf_file,
+            format="A4",
+            print_background=True,
+            prefer_css_page_size=True,
+            margin={"top": "0", "right": "0", "bottom": "0", "left": "0"}
+        )
+        browser.close()
+    return pdf_file
+
+
+def _resume_context():
+    if not os.path.exists("latest_resume.txt"):
+        return None
+    with open("latest_resume.txt", "r", encoding="utf-8") as f:
+        resume_text = f.read()
+
+    name = "Candidate Name"
+    email = "your.email@example.com"
+    phone = "+91 XXXXX XXXXX"
+    location = "Your City, India"
+
+    if os.path.exists("latest_contact.txt"):
+        with open("latest_contact.txt", "r", encoding="utf-8") as f:
+            cl = f.read().splitlines()
+        if len(cl) > 0 and cl[0]:
+            name = cl[0]
+        if len(cl) > 1 and cl[1]:
+            email = cl[1]
+        if len(cl) > 2 and cl[2]:
+            phone = cl[2]
+        if len(cl) > 3 and cl[3]:
+            location = cl[3]
+
+    s = split_resume_sections(resume_text)
+    initials = "".join([w[0] for w in name.split()[:2]]).upper() or "CV"
+
+    return {
+        "name": html.escape(name),
+        "email": html.escape(email),
+        "phone": html.escape(phone),
+        "location": html.escape(location),
+        "initials": html.escape(initials),
+        "summary": clean_text(s["summary"]),
+        "skills": format_bullets(s["skills"]),
+        "experience": format_bullets(s["experience"]),
+        "education": clean_text(s["education"]),
+    }
+
+
+def _fill(tpl, ctx):
+    out = tpl
+    for k in ["name", "email", "phone", "location", "initials",
+              "summary", "skills", "experience", "education"]:
+        out = out.replace("__" + k.upper() + "__", ctx[k] or "")
+    return out
+
+
+TEMPLATE_SLATE = """<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+@page{size:A4;margin:0}
+*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
+body{margin:0;color:#2b2b2b;font-size:11px}
+.head{background:#3f4a56;color:#fff;padding:22px 30px;display:flex;align-items:center;gap:18px}
+.mono{width:62px;height:62px;background:#55606c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;letter-spacing:1px}
+.head h1{margin:0;font-size:26px;letter-spacing:1px}
+.head .c{font-size:10px;color:#d4d8dd;margin-top:5px;line-height:1.6}
+.body{padding:18px 30px}
+h2{font-size:12px;letter-spacing:1px;color:#3f4a56;margin:16px 0 6px;border-bottom:1px solid #c9ced3;padding-bottom:3px}
+p{margin:0 0 6px;line-height:1.5}
+ul.two{column-count:2;margin:0;padding-left:16px}
+ul.two li{margin-bottom:3px;line-height:1.4}
+ul.exp{list-style:none;margin:0;padding:0}
+ul.exp p{font-weight:700;margin:8px 0 2px}
+ul.exp li{margin:0 0 3px 16px;list-style:disc}
+.lr{display:flex;justify-content:space-between;margin-top:7px;font-size:10px}
+.bar{height:5px;background:#e0e3e6;border-radius:3px;margin-top:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:#3f4a56}
+</style></head><body>
+<div class="head"><div class="mono">__INITIALS__</div><div><h1>__NAME__</h1><div class="c">__LOCATION__<br>__EMAIL__ &nbsp;|&nbsp; __PHONE__</div></div></div>
+<div class="body">
+<h2>SUMMARY</h2><p>__SUMMARY__</p>
+<h2>SKILLS</h2><ul class="two">__SKILLS__</ul>
+<h2>EXPERIENCE</h2><ul class="exp">__EXPERIENCE__</ul>
+<h2>EDUCATION AND TRAINING</h2><p>__EDUCATION__</p>
+<h2>LANGUAGES</h2>
+<div class="lr"><span>English</span><span>C2</span></div><div class="bar"><i style="width:92%"></i></div>
+<div class="lr"><span>Hindi</span><span>Native</span></div><div class="bar"><i style="width:100%"></i></div>
+</div></body></html>"""
+
+
+TEMPLATE_PHOTO = """<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+@page{size:A4;margin:0}
+*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
+body{margin:0;color:#33373c;font-size:11px}
+.tab{height:14px;width:42%;background:#3f4a56}
+.top{display:flex;gap:18px;padding:16px 30px 10px}
+.avatar{width:84px;height:96px;background:#55606c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;flex-shrink:0}
+.name{font-size:26px;color:#3f4a56;letter-spacing:1px;font-weight:700}
+.contact{font-size:10px;color:#444;margin-top:8px;line-height:1.8}
+.row{display:flex;padding:0 30px;border-top:1px solid #dcdfe3}
+.label{width:120px;flex-shrink:0;padding:13px 12px 13px 0;font-weight:700;color:#3f4a56;font-size:11px;letter-spacing:.5px}
+.content{flex:1;padding:13px 0}
+p{margin:0 0 6px;line-height:1.5}
+ul.two{column-count:2;margin:0;padding-left:16px}
+ul.two li{margin-bottom:3px;line-height:1.4}
+ul.exp{list-style:none;margin:0;padding:0}
+ul.exp p{font-weight:700;margin:6px 0 2px}
+ul.exp li{margin:0 0 3px 16px;list-style:disc}
+.lr{display:flex;justify-content:space-between;margin-top:6px;font-size:10px}
+.bar{height:5px;background:#e3e5e8;border-radius:3px;margin-top:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:#3f4a56}
+</style></head><body>
+<div class="tab"></div>
+<div class="top"><div class="avatar">__INITIALS__</div><div><div class="name">__NAME__</div><div class="contact">&#9679; __LOCATION__<br>&#9742; __PHONE__<br>&#9993; __EMAIL__</div></div></div>
+<div class="row"><div class="label">SUMMARY</div><div class="content"><p>__SUMMARY__</p></div></div>
+<div class="row"><div class="label">SKILLS</div><div class="content"><ul class="two">__SKILLS__</ul></div></div>
+<div class="row"><div class="label">EXPERIENCE</div><div class="content"><ul class="exp">__EXPERIENCE__</ul></div></div>
+<div class="row"><div class="label">EDUCATION AND TRAINING</div><div class="content"><p>__EDUCATION__</p></div></div>
+<div class="row"><div class="label">LANGUAGES</div><div class="content">
+<div class="lr"><span>English</span><span>C2</span></div><div class="bar"><i style="width:92%"></i></div>
+<div class="lr"><span>Hindi</span><span>Native</span></div><div class="bar"><i style="width:100%"></i></div>
+</div></div>
+</body></html>"""
+
+
+TEMPLATE_GREEN = """<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+@page{size:A4;margin:0}
+*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
+body{margin:0;color:#2c2f33;font-size:11px}
+.wrap{display:flex;min-height:297mm}
+.side{width:30%;padding:26px 16px;border-right:1px solid #eee}
+.ava{width:60px;height:60px;background:#111;color:#19c37d;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;margin-bottom:14px}
+.sname{color:#19c37d;font-weight:700;font-size:19px;line-height:1.2}
+.scontact{font-size:10px;color:#444;margin-top:12px;line-height:1.9}
+.main{flex:1;padding:26px 22px}
+h2{color:#111;font-size:13px;font-weight:700;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.5px}
+h2:first-child{margin-top:0}
+p{margin:0 0 6px;line-height:1.5}
+ul.two{column-count:2;margin:0;padding-left:16px}
+ul.two li{margin-bottom:3px;line-height:1.4}
+ul.exp{list-style:none;margin:0;padding:0}
+ul.exp p{font-weight:700;margin:8px 0 2px}
+ul.exp li{margin:0 0 3px 16px;list-style:disc}
+.lr{display:flex;justify-content:space-between;margin-top:6px;font-size:10px}
+.bar{height:5px;background:#e6e8ea;border-radius:3px;margin-top:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:#19c37d}
+</style></head><body>
+<div class="wrap">
+<div class="side">
+<div class="ava">__INITIALS__</div>
+<div class="sname">__NAME__</div>
+<div class="scontact">__PHONE__<br>__EMAIL__<br>__LOCATION__</div>
+</div>
+<div class="main">
+<h2>Summary</h2><p>__SUMMARY__</p>
+<h2>Skills</h2><ul class="two">__SKILLS__</ul>
+<h2>Experience</h2><ul class="exp">__EXPERIENCE__</ul>
+<h2>Education and Training</h2><p>__EDUCATION__</p>
+<h2>Languages</h2>
+<div class="lr"><span>English</span><span>C2</span></div><div class="bar"><i style="width:92%"></i></div>
+<div class="lr"><span>Hindi</span><span>Native</span></div><div class="bar"><i style="width:100%"></i></div>
+</div>
+</div></body></html>"""
+
+
+TEMPLATE_CLASSIC = """<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+@page{size:A4;margin:0}
+*{box-sizing:border-box;font-family:'Times New Roman',Georgia,serif}
+body{margin:0;color:#1a1a1a;font-size:11.5px}
+.name{text-align:center;font-size:25px;letter-spacing:3px;margin:26px 0 0;font-weight:700}
+.contact{text-align:center;font-size:11px;margin:6px 30px 0;line-height:1.5}
+h2{text-align:center;font-size:13px;letter-spacing:2px;border-top:1px solid #000;border-bottom:1px solid #000;padding:3px 0;margin:16px 30px 8px;text-transform:uppercase}
+.sec{padding:0 30px}
+p{margin:0 0 6px;line-height:1.5}
+ul.two{column-count:2;margin:0;padding-left:18px}
+ul.two li{margin-bottom:3px;line-height:1.4}
+ul.exp{list-style:none;margin:0;padding:0}
+ul.exp p{font-weight:700;margin:8px 0 2px;text-align:center}
+ul.exp li{margin:0 0 3px 18px;list-style:disc}
+.lr{display:flex;justify-content:space-between;margin-top:6px;font-size:10.5px}
+.bar{height:5px;background:#ddd;margin-top:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:#1a1a1a}
+</style></head><body>
+<div class="name">__NAME__</div>
+<div class="contact">__LOCATION__<br>__PHONE__<br>__EMAIL__</div>
+<h2>Summary</h2><div class="sec"><p>__SUMMARY__</p></div>
+<h2>Skills</h2><div class="sec"><ul class="two">__SKILLS__</ul></div>
+<h2>Experience</h2><div class="sec"><ul class="exp">__EXPERIENCE__</ul></div>
+<h2>Education and Training</h2><div class="sec"><p>__EDUCATION__</p></div>
+<h2>Languages</h2><div class="sec">
+<div class="lr"><span>English</span><span>C2</span></div><div class="bar"><i style="width:92%"></i></div>
+<div class="lr"><span>Hindi</span><span>Native</span></div><div class="bar"><i style="width:100%"></i></div>
+</div></body></html>"""
+
+
+TEMPLATE_MAUVE = """<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+@page{size:A4;margin:0}
+*{box-sizing:border-box;font-family:Georgia,'Times New Roman',serif}
+body{margin:0;color:#3a3530;font-size:11px}
+.band{background:#a8978d;color:#fff;padding:26px 30px;display:flex;justify-content:space-between;align-items:flex-start}
+.bname{font-size:30px;line-height:1.05;letter-spacing:1px;font-weight:700}
+.bcontact{text-align:right;font-size:10px;line-height:1.8}
+.row{display:flex;padding:0 30px;margin-top:4px}
+.label{width:128px;flex-shrink:0;padding:14px 12px 14px 0;font-weight:700;color:#9a8478;font-size:12px;letter-spacing:.5px}
+.content{flex:1;padding:14px 0;border-left:0}
+p{margin:0 0 6px;line-height:1.55}
+ul.two{column-count:2;margin:0;padding-left:16px}
+ul.two li{margin-bottom:3px;line-height:1.4}
+ul.exp{list-style:none;margin:0;padding:0}
+ul.exp p{font-weight:700;margin:6px 0 2px}
+ul.exp li{margin:0 0 3px 16px;list-style:disc}
+.lr{display:flex;justify-content:space-between;margin-top:6px;font-size:10px}
+.bar{height:5px;background:#e7e1db;border-radius:3px;margin-top:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:#a8978d}
+</style></head><body>
+<div class="band"><div class="bname">__NAME__</div><div class="bcontact">__EMAIL__<br>__PHONE__<br>__LOCATION__</div></div>
+<div class="row"><div class="label">SUMMARY</div><div class="content"><p>__SUMMARY__</p></div></div>
+<div class="row"><div class="label">SKILLS</div><div class="content"><ul class="two">__SKILLS__</ul></div></div>
+<div class="row"><div class="label">EXPERIENCE</div><div class="content"><ul class="exp">__EXPERIENCE__</ul></div></div>
+<div class="row"><div class="label">EDUCATION AND TRAINING</div><div class="content"><p>__EDUCATION__</p></div></div>
+<div class="row"><div class="label">LANGUAGES</div><div class="content">
+<div class="lr"><span>English</span><span>C2</span></div><div class="bar"><i style="width:92%"></i></div>
+<div class="lr"><span>Hindi</span><span>Native</span></div><div class="bar"><i style="width:100%"></i></div>
+</div></div>
+</body></html>"""
+
+
+TEMPLATES = {
+    "slate": TEMPLATE_SLATE,
+    "photo": TEMPLATE_PHOTO,
+    "green": TEMPLATE_GREEN,
+    "classic": TEMPLATE_CLASSIC,
+    "mauve": TEMPLATE_MAUVE,
+}
+
+
+@app.get("/download-template/{template}")
+def download_template(template: str):
+    ctx = _resume_context()
+    if ctx is None:
+        return {"success": False, "error": "No resume generated yet."}
+
+    tpl = TEMPLATES.get(template)
+    if not tpl:
+        return {"success": False, "error": "Unknown template."}
+
+    html_content = _fill(tpl, ctx)
+    pdf_file = render_html_to_pdf(html_content, f"resume_{template}")
+
+    return FileResponse(
+        pdf_file,
+        media_type="application/pdf",
+        filename=f"ResumeForge_{template}.pdf"
+    )
 
 
 @app.post("/generate")
@@ -218,7 +779,7 @@ Rules:
 - Do not include markdown tables.
 - Do not include extra explanations outside the resume.
 
-If the user uploaded LinkedIn screenshots containing projects, those projects must be included in the final resume.
+If the user uploaded a LinkedIn profile PDF or LinkedIn screenshots containing projects, those projects must be included in the final resume.
 Formatting rules:
 - Do not use markdown bold symbols like **.
 - Do not use separator lines like ---.
@@ -367,19 +928,102 @@ def extract_name_from_linkedin(linkedin_data):
 
     return ""
 
+def extract_pdf_text(pdf_bytes):
+    """
+    Locally extract text + page count from a PDF using pypdf.
+    Returns (text, page_count). Never raises - returns ("", 0) on failure
+    so the route can still fall back to Gemini's visual reading.
+    """
+    if PdfReader is None:
+        return "", 0
+
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        page_count = len(reader.pages)
+
+        parts = []
+        for page in reader.pages[:MAX_PDF_PAGES]:
+            try:
+                parts.append(page.extract_text() or "")
+            except Exception:
+                continue
+
+        text = "\n".join(p.strip() for p in parts if p.strip())
+        return text.strip(), page_count
+
+    except Exception as e:
+        print("Local PDF extraction failed:", str(e))
+        return "", 0
+
+
 @app.post("/upload-linkedin")
 async def upload_linkedin(
-    images: List[UploadFile] = File(...)
+    pdf: Optional[UploadFile] = File(None),
+    images: Optional[List[UploadFile]] = File(None)
 ):
+
+    temp_files = []
 
     try:
         images_for_gemini = []
+        pdf_for_gemini = None
+        local_pdf_text = ""
+
+        if pdf and pdf.filename:
+
+            is_pdf = (
+                pdf.content_type == "application/pdf"
+                or pdf.filename.lower().endswith(".pdf")
+            )
+
+            if not is_pdf:
+                return {
+                    "success": False,
+                    "error": "Please upload a valid LinkedIn profile PDF."
+                }
+
+            pdf_contents = await pdf.read()
+
+            # Size guard
+            if len(pdf_contents) > MAX_PDF_BYTES:
+                return {
+                    "success": False,
+                    "error": (
+                        f"PDF is too large "
+                        f"({len(pdf_contents) // (1024 * 1024)} MB). "
+                        f"Please upload a file under "
+                        f"{MAX_PDF_BYTES // (1024 * 1024)} MB."
+                    )
+                }
+
+            # Local text extraction + page-count guard
+            local_pdf_text, page_count = extract_pdf_text(pdf_contents)
+
+            if page_count > MAX_PDF_PAGES:
+                return {
+                    "success": False,
+                    "error": (
+                        f"PDF has {page_count} pages. Please upload your "
+                        f"LinkedIn profile export (under {MAX_PDF_PAGES} pages)."
+                    )
+                }
+
+            pdf_for_gemini = {
+                "mime_type": "application/pdf",
+                "data": pdf_contents
+            }
+
+        images = images or []
 
         for image in images:
+
+            if not image.filename:
+                continue
 
             contents = await image.read()
 
             temp_filename = f"linkedin_{image.filename}"
+            temp_files.append(temp_filename)
 
             with open(temp_filename, "wb") as f:
                 f.write(contents)
@@ -391,10 +1035,25 @@ async def upload_linkedin(
                     img.convert("RGB").copy()
                 )
 
-        prompt = """
-Analyze all LinkedIn profile screenshots.
+        gemini_inputs = []
 
-Combine information from all screenshots.
+        if pdf_for_gemini:
+            gemini_inputs.append(pdf_for_gemini)
+
+        gemini_inputs.extend(images_for_gemini)
+
+        if not gemini_inputs:
+            return {
+                "success": True,
+                "linkedin_data": ""
+            }
+
+        prompt = """
+Analyze the uploaded LinkedIn profile PDF and/or LinkedIn profile screenshots.
+
+If a PDF is provided, read the full PDF carefully because it is the recommended source.
+If screenshots are provided, treat them as fallback material and use them to fill any missing details.
+Combine information from all provided LinkedIn files.
 
 Extract the following information carefully:
 
@@ -415,8 +1074,9 @@ For Projects, extract:
 
 Important:
 Do not ignore the Projects section if it appears in any screenshot.
-If a screenshot contains projects, include them clearly.
-If projects are not visible, write: Projects: Not found.
+Do not ignore the Projects section if it appears in the PDF.
+If a PDF or screenshot contains projects, include them clearly.
+If projects are not available, write: Projects: Not found.
 
 Return clean structured text in this format:
 
@@ -442,17 +1102,40 @@ SKILLS:
 ...
 """
 
-        response = model.generate_content(
-            [prompt] + images_for_gemini
-        )
+        linkedin_data = ""
 
-        linkedin_data = response.text
+        try:
+            response = model.generate_content(
+                [prompt] + gemini_inputs
+            )
+            linkedin_data = (response.text or "").strip()
+            print("LinkedIn extraction completed successfully.")
 
-        for file in images_for_gemini:
-            if os.path.exists(file):
-                os.remove(file)
+        except Exception as gemini_error:
+            # Gemini unavailable / quota / network: don't fail the whole
+            # request if we already have locally extracted PDF text.
+            print("Gemini extraction failed:", str(gemini_error))
 
-        print("LinkedIn extraction completed successfully.")
+            if local_pdf_text:
+                print("Falling back to local PDF text extraction.")
+                linkedin_data = (
+                    "FULL NAME:\n(See details below - extracted locally)\n\n"
+                    "RAW LINKEDIN PDF TEXT:\n" + local_pdf_text
+                )
+            else:
+                return {
+                    "success": False,
+                    "error": (
+                        "Could not read the LinkedIn file. "
+                        "Please try again or upload screenshots instead."
+                    )
+                }
+
+        # If Gemini returned nothing usable but we have local text, use it.
+        if not linkedin_data and local_pdf_text:
+            linkedin_data = (
+                "RAW LINKEDIN PDF TEXT:\n" + local_pdf_text
+            )
 
         return {
             "success": True,
@@ -466,6 +1149,11 @@ SKILLS:
             "success": False,
             "error": str(e)
         }
+
+    finally:
+        for file in temp_files:
+            if os.path.exists(file):
+                os.remove(file)
 
 
 @app.get("/download-pdf")
@@ -665,7 +1353,7 @@ def download_professional_pdf():
     """
     education = clean_text(sections["education"])
     candidate_name_display = html.escape(candidate_name)
-    f
+
     html_content = f"""
     <!DOCTYPE html>
     <html>

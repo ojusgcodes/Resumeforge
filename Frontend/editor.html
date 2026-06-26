@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ResumeForge Editor</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&family=Merriweather&family=Roboto&family=Georgia&family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/interact.js/1.10.27/interact.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', Arial, sans-serif; }
+body { background: #0b1120; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+.topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 18px; background: rgba(15,23,42,.9);
+    border-bottom: 1px solid rgba(255,255,255,.08); flex-shrink: 0;
+}
+.topbar .logo { font-family: 'Sora',sans-serif; font-weight: 800; font-size: 1.2rem; }
+.topbar .logo span { background: linear-gradient(120deg,#818cf8,#c084fc,#38bdf8); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+
+.mode-switch { display: flex; gap: 6px; background: rgba(255,255,255,.05); padding: 4px; border-radius: 12px; }
+.mode-switch button {
+    border: none; background: none; color: #94a3b8; padding: 8px 16px;
+    border-radius: 9px; cursor: pointer; font-weight: 600; font-size: .9rem;
+}
+.mode-switch button.active { background: linear-gradient(120deg,#6366f1,#8b5cf6); color: #fff; }
+
+.top-actions { display: flex; gap: 10px; }
+.btn {
+    border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05);
+    color: #e2e8f0; padding: 9px 15px; border-radius: 10px; cursor: pointer;
+    font-weight: 600; font-size: .88rem; transition: .2s;
+}
+.btn:hover { background: rgba(255,255,255,.12); }
+.btn.primary { background: linear-gradient(120deg,#6366f1,#8b5cf6,#3b82f6); border: none; box-shadow: 0 8px 22px rgba(99,102,241,.4); }
+
+.toolbar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 9px 16px; background: #111827;
+    border-bottom: 1px solid rgba(255,255,255,.07); flex-shrink: 0;
+}
+.toolbar .group { display: flex; align-items: center; gap: 6px; padding-right: 10px; margin-right: 4px; border-right: 1px solid rgba(255,255,255,.08); }
+.toolbar .group:last-child { border-right: none; }
+.tool {
+    border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04);
+    color: #e2e8f0; min-width: 34px; height: 34px; padding: 0 9px; border-radius: 8px;
+    cursor: pointer; font-size: .9rem; display: inline-flex; align-items: center; justify-content: center;
+}
+.tool:hover { background: rgba(139,92,246,.25); }
+.toolbar select, .toolbar input[type="number"] {
+    height: 34px; border-radius: 8px; border: 1px solid rgba(255,255,255,.12);
+    background: #1a2333; color: #e2e8f0; padding: 0 8px; font-size: .88rem;
+}
+.toolbar input[type="color"] {
+    width: 34px; height: 34px; border: 1px solid rgba(255,255,255,.12);
+    border-radius: 8px; background: #1a2333; cursor: pointer; padding: 2px;
+}
+.toolbar label { font-size: .78rem; color: #94a3b8; }
+
+.workspace { flex: 1; overflow: auto; padding: 30px; display: flex; justify-content: center; align-items: flex-start; }
+
+/* A4 page for the block editor */
+#page {
+    position: relative; width: 794px; height: 1123px; background: #fff;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5); flex-shrink: 0;
+}
+.eblock {
+    position: absolute; top: 0; left: 0; min-width: 60px; min-height: 24px;
+    padding: 6px 8px; touch-action: none; box-sizing: border-box;
+}
+.eblock.selected { outline: 2px solid #6366f1; outline-offset: 1px; }
+.ehandle {
+    position: absolute; top: -11px; left: -11px; width: 22px; height: 22px;
+    background: #6366f1; border-radius: 50%; cursor: move; display: none;
+    align-items: center; justify-content: center; color: #fff; font-size: 12px; z-index: 5;
+}
+.eblock.selected .ehandle { display: flex; }
+.econtent { outline: none; color: #111827; line-height: 1.4; width: 100%; height: 100%; overflow: hidden; }
+.eblock img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; display: block; }
+.capturing .ehandle { display: none !important; }
+.capturing .eblock.selected { outline: none !important; }
+
+/* Canvas editor */
+#fabricWrap { box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.hidden { display: none !important; }
+
+.hint { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    background: rgba(15,23,42,.92); border: 1px solid rgba(255,255,255,.1);
+    color: #cbd5e1; font-size: .82rem; padding: 8px 16px; border-radius: 999px; pointer-events: none; }
+.empty-note { color:#94a3b8; text-align:center; margin-top:80px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+    <div class="logo">Resume<span>Forge</span> Editor</div>
+    <div class="mode-switch">
+        <button id="m1">🧩 Editor 1 · Blocks</button>
+        <button id="m2">🖼️ Editor 2 · Canvas</button>
+    </div>
+    <div class="top-actions">
+        <button class="btn" id="backBtn">← Back</button>
+        <button class="btn primary" id="downloadBtn">⬇ Download PDF</button>
+    </div>
+</div>
+
+<!-- Toolbar (shared; some controls apply per editor) -->
+<div class="toolbar" id="toolbar">
+    <div class="group">
+        <button class="tool" id="addText" title="Add text">＋ Text</button>
+        <button class="tool" id="addImage" title="Add image">＋ Image</button>
+        <input type="file" id="imageInput" accept="image/*" class="hidden">
+    </div>
+    <div class="group">
+        <select id="fontFamily" title="Font">
+            <option value="Inter">Inter</option>
+            <option value="Sora">Sora</option>
+            <option value="Poppins">Poppins</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Merriweather">Merriweather</option>
+            <option value="Roboto">Roboto</option>
+            <option value="Arial">Arial</option>
+            <option value="Times New Roman">Times</option>
+        </select>
+        <input type="number" id="fontSize" value="14" min="6" max="120" style="width:62px" title="Font size">
+        <input type="color" id="fontColor" value="#111827" title="Text color">
+    </div>
+    <div class="group">
+        <button class="tool" id="boldBtn" title="Bold"><b>B</b></button>
+        <button class="tool" id="italicBtn" title="Italic"><i>I</i></button>
+        <button class="tool" id="underlineBtn" title="Underline"><u>U</u></button>
+    </div>
+    <div class="group">
+        <button class="tool" id="alignLeft" title="Align left">⯇</button>
+        <button class="tool" id="alignCenter" title="Align center">≡</button>
+        <button class="tool" id="alignRight" title="Align right">⯈</button>
+    </div>
+    <div class="group">
+        <button class="tool" id="rotateBtn" title="Rotate 15°">⟳</button>
+        <button class="tool" id="flipHBtn" title="Flip horizontal">⇋</button>
+        <button class="tool" id="flipVBtn" title="Flip vertical">⇅</button>
+    </div>
+    <div class="group">
+        <button class="tool" id="frontBtn" title="Bring to front">⬆</button>
+        <button class="tool" id="backLayerBtn" title="Send to back">⬇</button>
+        <button class="tool" id="deleteBtn" title="Delete">🗑</button>
+    </div>
+</div>
+
+<div class="workspace" id="workspace">
+    <div id="page"></div>
+    <div id="fabricWrap" class="hidden"><canvas id="fabricCanvas" width="794" height="1123"></canvas></div>
+</div>
+
+<div class="hint" id="hint">Tip: click an element to select it, drag the corner dot to move, edges to resize.</div>
+
+<script>
+// ---------- Shared: load resume + parse into sections ----------
+function loadData() {
+    try {
+        const raw = localStorage.getItem("rf_editor_data");
+        if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return { resume: "", meta: {} };
+}
+
+function parseResume(text) {
+    const headingNames = ["PROFESSIONAL SUMMARY","TECHNICAL SKILLS","SKILLS","SUMMARY","EXPERIENCE","PROJECTS","EDUCATION","CERTIFICATIONS","ACHIEVEMENTS"];
+    const lines = (text || "").split("\n");
+    const out = [];
+    let name = (lines[0] || "Your Name").trim();
+    out.push({ kind: "name", text: name });
+    let body = null;
+    for (let i = 1; i < lines.length; i++) {
+        const raw = lines[i];
+        const clean = raw.trim().replace(/:$/, "").toUpperCase();
+        if (!raw.trim()) continue;
+        if (headingNames.includes(clean)) {
+            out.push({ kind: "heading", text: raw.trim().replace(/:$/, "") });
+            body = { kind: "body", text: "" };
+            out.push(body);
+        } else if (body) {
+            body.text += (body.text ? "\n" : "") + raw.trim();
+        } else {
+            // line right under the name (e.g. linkedin url)
+            out.push({ kind: "subtitle", text: raw.trim() });
+        }
+    }
+    return out.filter(b => b.text && b.text.trim());
+}
+
+const DATA = loadData();
+const SECTIONS = parseResume(DATA.resume);
+const urlType = new URLSearchParams(location.search).get("type") === "2" ? "2" : "1";
+
+// ============================================================
+// EDITOR 1 — DOM BLOCKS (interact.js)
+// ============================================================
+const Blocks = (function () {
+    const page = document.getElementById("page");
+    let selected = null;
+    let zCounter = 10;
+
+    function select(el) {
+        if (selected) selected.classList.remove("selected");
+        selected = el;
+        if (el) {
+            el.classList.add("selected");
+            const c = el.querySelector(".econtent");
+            if (c) {
+                document.getElementById("fontColor").value = rgbToHex(getComputedStyle(c).color);
+                const fs = parseInt(getComputedStyle(c).fontSize) || 14;
+                document.getElementById("fontSize").value = fs;
+            }
+        }
+    }
+
+    function makeBlock(opts) {
+        const b = document.createElement("div");
+        b.className = "eblock";
+        b.dataset.x = opts.x || 0; b.dataset.y = opts.y || 0; b.dataset.rot = 0;
+        b.style.transform = `translate(${opts.x||0}px, ${opts.y||0}px)`;
+        b.style.width = (opts.w || 300) + "px";
+        if (opts.h) b.style.height = opts.h + "px";
+
+        const handle = document.createElement("div");
+        handle.className = "ehandle"; handle.textContent = "✛";
+        b.appendChild(handle);
+
+        if (opts.type === "image") {
+            const img = document.createElement("img");
+            img.src = opts.src;
+            b.appendChild(img);
+            b.dataset.fliph = 1; b.dataset.flipv = 1;
+            b.style.height = (opts.h || 160) + "px";
+        } else {
+            const c = document.createElement("div");
+            c.className = "econtent";
+            c.contentEditable = "true";
+            c.innerHTML = (opts.text || "Type here").replace(/\n/g, "<br>");
+            c.style.fontFamily = opts.font || "Inter";
+            c.style.fontSize = (opts.size || 14) + "px";
+            c.style.fontWeight = opts.bold ? "700" : "400";
+            c.style.color = opts.color || "#111827";
+            c.style.textAlign = opts.align || "left";
+            b.appendChild(c);
+        }
+        b.style.zIndex = zCounter++;
+        b.addEventListener("mousedown", () => select(b));
+        page.appendChild(b);
+        return b;
+    }
+
+    function applyTransform(t) {
+        const x = parseFloat(t.dataset.x) || 0;
+        const y = parseFloat(t.dataset.y) || 0;
+        const rot = parseFloat(t.dataset.rot) || 0;
+        const fh = parseFloat(t.dataset.fliph) || 1;
+        const fv = parseFloat(t.dataset.flipv) || 1;
+        t.style.transform = `translate(${x}px, ${y}px) rotate(${rot}deg) scale(${fh}, ${fv})`;
+    }
+
+    function init() {
+        page.innerHTML = "";
+        let y = 40;
+        SECTIONS.forEach(sec => {
+            let size = 14, bold = false, color = "#111827";
+            if (sec.kind === "name") { size = 30; bold = true; color = "#1e293b"; }
+            else if (sec.kind === "heading") { size = 16; bold = true; color = "#7c3aed"; }
+            else if (sec.kind === "subtitle") { size = 12; color = "#475569"; }
+            const lines = sec.text.split("\n").length;
+            const h = sec.kind === "name" ? 48 : Math.max(28, lines * (size * 1.5) + 14);
+            makeBlock({ x: 48, y: y, w: 698, h: h, text: sec.text, size: size, bold: bold, color: color });
+            y += h + 8;
+        });
+
+        interact(".eblock").draggable({
+            allowFrom: ".ehandle",
+            listeners: { move(e) {
+                const t = e.target;
+                t.dataset.x = (parseFloat(t.dataset.x)||0) + e.dx;
+                t.dataset.y = (parseFloat(t.dataset.y)||0) + e.dy;
+                applyTransform(t);
+            }}
+        }).resizable({
+            edges: { left: true, right: true, bottom: true, top: true },
+            listeners: { move(e) {
+                const t = e.target;
+                let x = parseFloat(t.dataset.x)||0, y = parseFloat(t.dataset.y)||0;
+                t.style.width = e.rect.width + "px";
+                t.style.height = e.rect.height + "px";
+                x += e.deltaRect.left; y += e.deltaRect.top;
+                t.dataset.x = x; t.dataset.y = y;
+                applyTransform(t);
+            }}
+        });
+    }
+
+    function getSelected() { return selected; }
+    function getSelectedContent() { return selected ? selected.querySelector(".econtent") : null; }
+
+    return { init, makeBlock, select, getSelected, getSelectedContent, applyTransform, page };
+})();
+
+function rgbToHex(rgb) {
+    const m = (rgb || "").match(/\d+/g);
+    if (!m) return "#111827";
+    return "#" + m.slice(0,3).map(n => (+n).toString(16).padStart(2,"0")).join("");
+}
+
+// ============================================================
+// EDITOR 2 — FABRIC CANVAS
+// ============================================================
+const Canvas = (function () {
+    let fc = null;
+
+    function init() {
+        if (fc) { fc.dispose(); fc = null; }
+        fc = new fabric.Canvas("fabricCanvas", { backgroundColor: "#ffffff", preserveObjectStacking: true });
+        let y = 40;
+        SECTIONS.forEach(sec => {
+            let size = 14, weight = "normal", fill = "#111827";
+            if (sec.kind === "name") { size = 30; weight = "bold"; fill = "#1e293b"; }
+            else if (sec.kind === "heading") { size = 17; weight = "bold"; fill = "#7c3aed"; }
+            else if (sec.kind === "subtitle") { size = 12; fill = "#475569"; }
+            const t = new fabric.Textbox(sec.text, {
+                left: 48, top: y, width: 700, fontSize: size, fontWeight: weight,
+                fill: fill, fontFamily: "Inter", lineHeight: 1.3
+            });
+            fc.add(t);
+            y += t.height + 14;
+        });
+        fc.renderAll();
+    }
+
+    function get() { return fc; }
+    function active() { return fc ? fc.getActiveObject() : null; }
+    return { init, get, active };
+})();
+
+// ============================================================
+// MODE SWITCHING + TOOLBAR
+// ============================================================
+let MODE = urlType;
+
+function setMode(mode) {
+    MODE = mode;
+    document.getElementById("m1").classList.toggle("active", mode === "1");
+    document.getElementById("m2").classList.toggle("active", mode === "2");
+    document.getElementById("page").classList.toggle("hidden", mode !== "1");
+    document.getElementById("fabricWrap").classList.toggle("hidden", mode !== "2");
+    const hint = document.getElementById("hint");
+    if (mode === "1") { Blocks.init(); hint.textContent = "Editor 1 (Blocks): click an element, drag the corner dot to move, edges to resize, type to edit text."; }
+    else { Canvas.init(); hint.textContent = "Editor 2 (Canvas): click an element to move/scale/rotate with its handles. Double-click text to edit."; }
+}
+
+document.getElementById("m1").addEventListener("click", () => setMode("1"));
+document.getElementById("m2").addEventListener("click", () => setMode("2"));
+document.getElementById("backBtn").addEventListener("click", () => { window.location.href = "index.html"; });
+
+// ---- Toolbar actions ----
+function tbActiveCanvasObj() { return Canvas.active(); }
+
+document.getElementById("addText").addEventListener("click", () => {
+    if (MODE === "1") {
+        const b = Blocks.makeBlock({ x: 60, y: 60, w: 260, h: 40, text: "New text", size: 16 });
+        Blocks.select(b);
+    } else {
+        const t = new fabric.Textbox("New text", { left: 80, top: 80, width: 260, fontSize: 18, fill: "#111827", fontFamily: "Inter" });
+        Canvas.get().add(t); Canvas.get().setActiveObject(t); Canvas.get().renderAll();
+    }
+});
+
+document.getElementById("addImage").addEventListener("click", () => document.getElementById("imageInput").click());
+document.getElementById("imageInput").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        const src = ev.target.result;
+        if (MODE === "1") {
+            const b = Blocks.makeBlock({ type: "image", src: src, x: 80, y: 80, w: 180, h: 180 });
+            Blocks.select(b);
+        } else {
+            fabric.Image.fromURL(src, (img) => {
+                img.scaleToWidth(180); img.set({ left: 90, top: 90 });
+                Canvas.get().add(img); Canvas.get().setActiveObject(img); Canvas.get().renderAll();
+            });
+        }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+});
+
+function styleBlockContent(fn) {
+    const c = Blocks.getSelectedContent();
+    if (c) fn(c);
+}
+
+document.getElementById("fontFamily").addEventListener("change", (e) => {
+    const v = e.target.value;
+    if (MODE === "1") styleBlockContent(c => c.style.fontFamily = v);
+    else { const o = tbActiveCanvasObj(); if (o) { o.set("fontFamily", v); Canvas.get().renderAll(); } }
+});
+document.getElementById("fontSize").addEventListener("change", (e) => {
+    const v = parseInt(e.target.value) || 14;
+    if (MODE === "1") styleBlockContent(c => c.style.fontSize = v + "px");
+    else { const o = tbActiveCanvasObj(); if (o) { o.set("fontSize", v); Canvas.get().renderAll(); } }
+});
+document.getElementById("fontColor").addEventListener("input", (e) => {
+    const v = e.target.value;
+    if (MODE === "1") styleBlockContent(c => c.style.color = v);
+    else { const o = tbActiveCanvasObj(); if (o) { o.set("fill", v); Canvas.get().renderAll(); } }
+});
+document.getElementById("boldBtn").addEventListener("click", () => {
+    if (MODE === "1") styleBlockContent(c => c.style.fontWeight = c.style.fontWeight === "700" ? "400" : "700");
+    else { const o = tbActiveCanvasObj(); if (o) { o.set("fontWeight", o.fontWeight === "bold" ? "normal" : "bold"); Canvas.get().renderAll(); } }
+});
+document.getElementById("italicBtn").addEventListener("click", () => {
+    if (MODE === "1") styleBlockContent(c => c.style.fontStyle = c.style.fontStyle === "italic" ? "normal" : "italic");
+    else { const o = tbActiveCanvasObj(); if (o) { o.set("fontStyle", o.fontStyle === "italic" ? "normal" : "italic"); Canvas.get().renderAll(); } }
+});
+document.getElementById("underlineBtn").addEventListener("click", () => {
+    if (MODE === "1") styleBlockContent(c => c.style.textDecoration = c.style.textDecoration === "underline" ? "none" : "underline");
+    else { const o = tbActiveCanvasObj(); if (o) { o.set("underline", !o.underline); Canvas.get().renderAll(); } }
+});
+function setAlign(a) {
+    if (MODE === "1") styleBlockContent(c => c.style.textAlign = a);
+    else { const o = tbActiveCanvasObj(); if (o && o.set) { o.set("textAlign", a); Canvas.get().renderAll(); } }
+}
+document.getElementById("alignLeft").addEventListener("click", () => setAlign("left"));
+document.getElementById("alignCenter").addEventListener("click", () => setAlign("center"));
+document.getElementById("alignRight").addEventListener("click", () => setAlign("right"));
+
+document.getElementById("rotateBtn").addEventListener("click", () => {
+    if (MODE === "1") {
+        const s = Blocks.getSelected(); if (!s) return;
+        s.dataset.rot = ((parseFloat(s.dataset.rot)||0) + 15) % 360;
+        Blocks.applyTransform(s);
+    } else { const o = tbActiveCanvasObj(); if (o) { o.rotate(((o.angle||0)+15)%360); Canvas.get().renderAll(); } }
+});
+document.getElementById("flipHBtn").addEventListener("click", () => {
+    if (MODE === "1") { const s = Blocks.getSelected(); if (!s) return; s.dataset.fliph = (parseFloat(s.dataset.fliph)||1) * -1; Blocks.applyTransform(s); }
+    else { const o = tbActiveCanvasObj(); if (o) { o.toggle("flipX"); Canvas.get().renderAll(); } }
+});
+document.getElementById("flipVBtn").addEventListener("click", () => {
+    if (MODE === "1") { const s = Blocks.getSelected(); if (!s) return; s.dataset.flipv = (parseFloat(s.dataset.flipv)||1) * -1; Blocks.applyTransform(s); }
+    else { const o = tbActiveCanvasObj(); if (o) { o.toggle("flipY"); Canvas.get().renderAll(); } }
+});
+
+document.getElementById("frontBtn").addEventListener("click", () => {
+    if (MODE === "1") { const s = Blocks.getSelected(); if (s) s.style.zIndex = 999; }
+    else { const o = tbActiveCanvasObj(); if (o) { o.bringToFront(); Canvas.get().renderAll(); } }
+});
+document.getElementById("backLayerBtn").addEventListener("click", () => {
+    if (MODE === "1") { const s = Blocks.getSelected(); if (s) s.style.zIndex = 1; }
+    else { const o = tbActiveCanvasObj(); if (o) { o.sendToBack(); Canvas.get().renderAll(); } }
+});
+document.getElementById("deleteBtn").addEventListener("click", () => {
+    if (MODE === "1") { const s = Blocks.getSelected(); if (s) { s.remove(); Blocks.select(null); } }
+    else { const o = tbActiveCanvasObj(); if (o) { Canvas.get().remove(o); Canvas.get().renderAll(); } }
+});
+
+// ---- Download as PDF ----
+document.getElementById("downloadBtn").addEventListener("click", async () => {
+    const { jsPDF } = window.jspdf;
+    if (MODE === "1") {
+        const page = document.getElementById("page");
+        Blocks.select(null);
+        page.parentElement.classList.add("capturing");
+        const canvas = await html2canvas(page, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+        page.parentElement.classList.remove("capturing");
+        const img = canvas.toDataURL("image/png");
+        const pdf = new jsPDF("p", "pt", "a4");
+        const w = pdf.internal.pageSize.getWidth();
+        const h = pdf.internal.pageSize.getHeight();
+        pdf.addImage(img, "PNG", 0, 0, w, h);
+        pdf.save("ResumeForge_Resume.pdf");
+    } else {
+        const fc = Canvas.get();
+        fc.discardActiveObject(); fc.renderAll();
+        const img = fc.toDataURL({ format: "png", multiplier: 2 });
+        const pdf = new jsPDF("p", "pt", "a4");
+        const w = pdf.internal.pageSize.getWidth();
+        const h = pdf.internal.pageSize.getHeight();
+        pdf.addImage(img, "PNG", 0, 0, w, h);
+        pdf.save("ResumeForge_Resume.pdf");
+    }
+});
+
+// ---- Boot ----
+if (!DATA.resume) {
+    document.getElementById("page").innerHTML = '<div class="empty-note">No resume found. Generate a resume on the main page first, then open the editor.</div>';
+}
+setMode(urlType);
+</script>
+</body>
+</html>

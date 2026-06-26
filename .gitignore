@@ -19,7 +19,34 @@ ResumeForge_Professional_Template.pdf
 # Uploaded LinkedIn screenshots
 linkedin_*.png
 
+# Auth database
+users.db
+
 # Editor and system files
 .vscode/
 .DS_Store
 Thumbs.db
+# Generated resume files
+Backend/professional_resume.html
+Backend/professional_resume.pdf
+Backend/resume_photo.html
+Backend/resume_photo.pdf
+Backend/latest_resume.txt
+Backend/latest_contact.txt
+
+# Temporary files
+Backend/requirements_clean.txt
+
+# Test resume outputs
+Vishal_Jain_Professional_Resume.pdf
+Vishal_Jain_Resume.txt
+# Generated resume files - do not upload
+Backend/professional_resume.html
+Backend/professional_resume.pdf
+Backend/resume_photo.html
+Backend/resume_photo.pdf
+Backend/requirements_clean.txt
+
+# Local test outputs
+*_Professional_Resume.pdf
+*_Resume.txt
