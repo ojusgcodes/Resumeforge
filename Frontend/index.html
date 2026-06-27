@@ -1773,6 +1773,194 @@ input[type="file"] { background: #fff !important; border: 1px solid var(--border
 /* Editor promo divider text */
 .preview-banner div p { color: var(--muted) !important; }
 
+/* ===== RESULT TWO-COLUMN LAYOUT ===== */
+.result-layout {
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(1240px, 95vw);
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    margin-top: 30px;
+    text-align: left;
+}
+.result-main {
+    position: sticky;
+    top: 88px;
+    align-self: start;
+    max-height: calc(100vh - 108px);
+    overflow: auto;
+    padding-right: 4px;
+}
+.result-main .resume-card,
+.result-main .github-analysis {
+    max-width: none !important;
+    margin: 0 0 18px !important;
+}
+.result-tools { display: flex; flex-direction: column; }
+.result-tools > div { margin: 0 0 18px !important; max-width: none !important; }
+@media (max-width: 980px) {
+    .result-layout {
+        grid-template-columns: 1fr;
+        left: auto; transform: none; width: 100%;
+    }
+    .result-main { position: static; max-height: none; overflow: visible; padding-right: 0; }
+}
+
+/* ===== AI ROLE MATCH (Step 1) ===== */
+.role-match-banner {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 25px;
+    margin-top: 30px;
+    text-align: center;
+}
+.role-match-banner h3 { color: var(--accent); margin-bottom: 10px; }
+.role-match-banner > p { color: var(--muted); margin-bottom: 18px; }
+.match-loading { color: var(--muted); padding: 16px; font-style: italic; }
+.match-err { color: #c0392b; padding: 12px; }
+.match-summary {
+    margin: 18px 0 10px;
+    font-size: 1.02rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+.match-group { margin-top: 18px; text-align: left; }
+.match-group > h4 {
+    font-size: 1rem;
+    color: var(--ink);
+    margin: 0 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+}
+.role-card {
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+}
+.role-card .rc-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+.role-card .rc-title { font-weight: 700; color: var(--ink); }
+.role-card .rc-level {
+    font-size: .72rem;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: rgba(154,59,28,.12);
+    color: var(--accent);
+}
+.role-card p { color: var(--muted); font-size: .9rem; margin: 3px 0 0; line-height: 1.5; }
+.role-card .rc-gap { color: var(--ink); font-size: .85rem; }
+.role-card .rc-gap b { color: var(--accent); }
+
+/* ===== JOB SEARCH (Step 2) ===== */
+.jobs-banner {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 25px;
+    margin-top: 24px;
+    text-align: center;
+}
+.jobs-banner h3 { color: var(--accent); margin-bottom: 10px; }
+.jobs-banner > p { color: var(--muted); margin-bottom: 16px; }
+.jobs-search { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.jobs-search input {
+    flex: 1; min-width: 180px;
+    padding: 12px 14px; border-radius: 10px;
+    border: 1px solid var(--border); background: #fff; color: var(--ink); font-size: .95rem;
+}
+body.dark-mode .jobs-search input { background: #17150f; }
+.jobs-search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(154,59,28,.12); }
+.platform-links { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; margin: 18px 0 6px; }
+.platform-links .pl-label { color: var(--muted); font-size: .85rem; }
+.pl-btn {
+    text-decoration: none; font-size: .82rem; font-weight: 600;
+    padding: 7px 13px; border-radius: 999px;
+    background: rgba(154,59,28,.1); border: 1px solid rgba(154,59,28,.3); color: var(--accent);
+}
+.pl-btn:hover { background: rgba(154,59,28,.2); }
+.jobs-sources { color: var(--muted2); font-size: .82rem; text-align: left; margin: 14px 0 0; }
+.jobs-count { color: var(--ink); font-weight: 600; text-align: left; margin: 12px 0 8px; }
+.job-source {
+    font-size: .68rem; font-weight: 600; vertical-align: middle;
+    padding: 1px 7px; border-radius: 999px; margin-left: 6px;
+    background: rgba(154,59,28,.1); color: var(--accent); border: 1px solid rgba(154,59,28,.25);
+}
+.jobs-note { color: var(--muted); font-size: .9rem; margin-top: 14px; line-height: 1.6; text-align: left; }
+.job-list { display: flex; flex-direction: column; gap: 10px; }
+.job-card {
+    display: flex; gap: 12px; align-items: flex-start; text-align: left;
+    background: var(--cream); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: border-color .2s;
+}
+.job-card:has(.job-chk:checked) { border-color: var(--accent); border-left: 3px solid var(--accent); }
+.job-card .job-chk { margin-top: 4px; width: 17px; height: 17px; flex-shrink: 0; accent-color: var(--accent); }
+.job-title { font-weight: 700; color: var(--ink); }
+.job-meta { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+.job-snippet { color: var(--muted2); font-size: .82rem; margin-top: 5px; line-height: 1.5; }
+.job-view { display: inline-block; margin-top: 6px; font-size: .8rem; color: var(--accent); text-decoration: none; font-weight: 600; }
+.jobs-saved { color: #1d7a4d; font-weight: 600; margin-top: 12px; text-align: left; }
+
+/* ===== TAILOR & APPLY — per-job applications (Steps 3-5) ===== */
+.apps-banner {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 25px;
+    margin-top: 24px;
+    text-align: center;
+}
+.apps-banner h3 { color: var(--accent); margin-bottom: 10px; }
+.apps-banner > p { color: var(--muted); margin-bottom: 16px; }
+.apps-controls { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.apps-tpl-label { font-size: .88rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.apps-tpl-label select {
+    padding: 9px 10px; border-radius: 9px; border: 1px solid var(--border);
+    background: #fff; color: var(--ink); font-size: .9rem;
+}
+body.dark-mode .apps-tpl-label select { background: #17150f; }
+.req-row { text-align: left; margin: 6px 0; font-size: .9rem; color: var(--ink); }
+.req-row b { color: var(--accent); }
+.apps-hint { color: var(--muted); font-size: .9rem; line-height: 1.6; margin-top: 16px; text-align: left; }
+.apps-hint b { color: var(--accent); }
+.apps-summary { text-align: left; color: var(--muted); font-weight: 600; margin: 18px 0 10px; }
+.app-card {
+    text-align: left;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+}
+.app-card.finalized { border-left-color: #1d7a4d; }
+.app-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.app-title { font-weight: 700; color: var(--ink); }
+.app-company { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+.app-final { font-size: .82rem; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
+.app-final input { width: 16px; height: 16px; accent-color: #1d7a4d; }
+.app-changes { color: var(--muted2); font-size: .85rem; margin: 8px 0; line-height: 1.5; }
+.app-changes b { color: var(--accent); }
+.app-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.app-actions .pdf-btn { font-size: .85rem; padding: 8px 14px; }
+.app-resume {
+    margin-top: 12px; padding: 16px; border-radius: 10px;
+    background: #fff; color: #111827; font-size: .82rem; line-height: 1.6;
+    max-height: 360px; overflow: auto; border: 1px solid var(--border);
+}
+
 /* ===== TEMPLATE GALLERY ===== */
 .template-gallery {
     display: grid;
@@ -1862,6 +2050,8 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
             <li><a href="#samples" class="nav-item">Samples</a></li>
 
             <li><a href="#generate" class="nav-item">Generate</a></li>
+
+            <li><a href="about.html" class="nav-item">About</a></li>
 
             <li><a href="#contact" class="nav-item">Contact</a></li>
 
@@ -2279,6 +2469,8 @@ if (!data.resume) {
                 btn.disabled = false;
                 btn.innerHTML = "🚀 Generate Resume";
 document.getElementById("result").innerHTML = `
+    <div class="result-layout">
+    <div class="result-main">
     <div class="github-analysis fade-in">
 
         <h3>
@@ -2320,6 +2512,45 @@ document.getElementById("result").innerHTML = `
         </div>
 
     </div>
+    </div>
+
+    <div class="result-tools">
+
+    <div class="role-match-banner fade-in">
+        <h3>🎯 Roles You Can Apply For</h3>
+        <p>Let AI read your profile and tell you which roles &amp; companies you qualify for — and how far you can stretch.</p>
+        <button id="matchRolesBtn" class="pdf-btn">🔍 Discover My Roles</button>
+        <div id="matchResults"></div>
+    </div>
+
+    <div class="jobs-banner fade-in">
+        <h3>🔎 Find Job Openings</h3>
+        <p>Search live openings, then tick the ones you want to apply to.</p>
+        <div class="jobs-search">
+            <input id="jobRole" placeholder="Role (e.g. Frontend Developer)">
+            <input id="jobLocation" placeholder="Location (e.g. New Delhi)">
+            <button id="searchJobsBtn" class="pdf-btn">Search</button>
+        </div>
+        <div id="jobsResults"></div>
+    </div>
+
+    <div class="apps-banner fade-in">
+        <h3>🗂️ Tailor &amp; Apply</h3>
+        <p>AI writes a <b>unique resume for every job you select</b>. Review each, then finalize before applying.</p>
+        <div class="apps-controls">
+            <label class="apps-tpl-label">Template:
+                <select id="appsTemplate">
+                    <option value="classic">Classic</option>
+                    <option value="slate">Slate Header</option>
+                    <option value="photo">Photo Header</option>
+                    <option value="green">Green Accent</option>
+                    <option value="mauve">Mauve Elegant</option>
+                </select>
+            </label>
+            <button id="genAppsBtn" class="pdf-btn">✨ Generate tailored resumes</button>
+        </div>
+        <div id="appsResults"><p class="apps-hint">👆 First, select the jobs you want to apply to in “Find Job Openings” above — tick them and click <b>“Save selected jobs.”</b> Then I'll write a unique resume for each.</p></div>
+    </div>
 
     <div class="preview-banner fade-in">
 
@@ -2347,14 +2578,29 @@ document.getElementById("result").innerHTML = `
         </div>
 
     </div>
+
+    </div>
+    </div>
 `;
 
 // Hand the freshly generated resume to the chat editor + the Canva-style editor
 window.__resumeText = data.resume;
 window.__resumeMeta = { email: email, phone: phone, location: location, company: company, role: role };
+// Stash data for AI role matching (Step 1)
+window.__matchData = {
+    resume: data.resume || "",
+    linkedin_data: (typeof linkedinData !== "undefined" ? linkedinData : ""),
+    github_skills: (data.github_analysis && data.github_analysis.skills) ? data.github_analysis.skills.join(", ") : "",
+    github_bio: (data.github_analysis && data.github_analysis.bio) ? data.github_analysis.bio : ""
+};
 if (window.activateChat) {
     window.activateChat(data.resume, { company: company, role: role });
 }
+// Prefill the job-search inputs (Step 2)
+const _jr = document.getElementById("jobRole");
+if (_jr && role) _jr.value = role;
+const _jl = document.getElementById("jobLocation");
+if (_jl && location) _jl.value = location;
             });
 document.addEventListener("click", function(e){
 
@@ -2406,6 +2652,306 @@ document.addEventListener("click", function (e) {
         : `${API_BASE}/download-template/${t}`;
     window.open(url, "_blank");
 });
+
+// ===== Step 1: AI role matching =====
+function _esc(s) {
+    return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function renderMatch(d) {
+    let h = "";
+    if (d.summary) h += `<div class="match-summary">${_esc(d.summary)}</div>`;
+
+    if (Array.isArray(d.qualified_roles) && d.qualified_roles.length) {
+        h += `<div class="match-group"><h4>✅ You qualify for</h4>`;
+        d.qualified_roles.forEach(r => {
+            h += `<div class="role-card"><div class="rc-head">`
+              + `<span class="rc-title">${_esc(r.role)}</span>`
+              + (r.level ? `<span class="rc-level">${_esc(r.level)}</span>` : "")
+              + `</div><p>${_esc(r.reason)}</p></div>`;
+        });
+        h += `</div>`;
+    }
+
+    if (Array.isArray(d.stretch_roles) && d.stretch_roles.length) {
+        h += `<div class="match-group"><h4>🚀 Stretch roles (a little more and you're there)</h4>`;
+        d.stretch_roles.forEach(r => {
+            const gap = Array.isArray(r.gap) ? r.gap.map(_esc).join(", ") : _esc(r.gap || "");
+            h += `<div class="role-card"><div class="rc-head">`
+              + `<span class="rc-title">${_esc(r.role)}</span></div>`
+              + (gap ? `<p class="rc-gap"><b>Add:</b> ${gap}</p>` : "")
+              + (r.advice ? `<p>${_esc(r.advice)}</p>` : "")
+              + `</div>`;
+        });
+        h += `</div>`;
+    }
+
+    if (Array.isArray(d.target_companies) && d.target_companies.length) {
+        h += `<div class="match-group"><h4>🏢 Companies that fit you</h4>`;
+        d.target_companies.forEach(c => {
+            h += `<div class="role-card"><div class="rc-head">`
+              + `<span class="rc-title">${_esc(c.name)}</span></div>`
+              + (c.fit ? `<p>${_esc(c.fit)}</p>` : "")
+              + `</div>`;
+        });
+        h += `</div>`;
+    }
+    return h || `<p class="match-err">No roles returned. Try again.</p>`;
+}
+
+document.addEventListener("click", async function (e) {
+    if (e.target.id !== "matchRolesBtn") return;
+    const md = window.__matchData;
+    const out = document.getElementById("matchResults");
+    if (!md || (!md.resume && !md.linkedin_data && !md.github_skills)) {
+        out.innerHTML = `<p class="match-err">⚠️ Generate a resume first, then I can match your roles.</p>`;
+        return;
+    }
+    const btn = e.target;
+    btn.disabled = true;
+    btn.textContent = "🔎 Analyzing your profile...";
+    out.innerHTML = `<div class="match-loading">Reading your skills, projects and experience…</div>`;
+    try {
+        const res = await fetch(`${API_BASE}/match-roles`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(md)
+        });
+        const data = await res.json();
+        if (data.success) {
+            out.innerHTML = renderMatch(data);
+        } else {
+            out.innerHTML = `<p class="match-err">⚠️ ${_esc(data.error || "Could not analyze your roles.")}</p>`;
+        }
+    } catch (err) {
+        out.innerHTML = `<p class="match-err">⚠️ Couldn't reach the server. Is the backend running?</p>`;
+    }
+    btn.disabled = false;
+    btn.textContent = "🔄 Re-analyze";
+});
+
+// ===== Step 2: Job opening search =====
+function renderJobs(d) {
+    let h = "";
+    if (Array.isArray(d.platform_links) && d.platform_links.length) {
+        h += `<div class="platform-links"><span class="pl-label">Search on:</span>`;
+        d.platform_links.forEach(l => {
+            h += `<a class="pl-btn" href="${_esc(l.url)}" target="_blank" rel="noopener">${_esc(l.name)} ↗</a>`;
+        });
+        h += `</div>`;
+    }
+    if (Array.isArray(d.sources_active) && d.sources_active.length) {
+        h += `<p class="jobs-sources">Searched: ${d.sources_active.map(_esc).join(" · ")}</p>`;
+    }
+    if (Array.isArray(d.jobs) && d.jobs.length) {
+        window.__lastJobs = d.jobs;
+        h += `<p class="jobs-count">${d.jobs.length} openings found — tick the ones you want to apply to:</p><div class="job-list">`;
+        d.jobs.forEach((j, i) => {
+            h += `<label class="job-card"><input type="checkbox" class="job-chk" data-idx="${i}">`
+              + `<div class="job-info"><div class="job-title">${_esc(j.title)}`
+              + (j.source ? ` <span class="job-source">${_esc(j.source)}</span>` : "")
+              + `</div>`
+              + `<div class="job-meta">${_esc(j.company)}${j.location ? " · " + _esc(j.location) : ""}</div>`
+              + (j.snippet ? `<div class="job-snippet">${_esc(j.snippet)}</div>` : "")
+              + (j.url ? `<a class="job-view" href="${_esc(j.url)}" target="_blank" rel="noopener">View posting ↗</a>` : "")
+              + `</div></label>`;
+        });
+        h += `</div><button id="saveSelectedJobsBtn" class="pdf-btn" style="margin-top:12px;">✅ Save selected jobs</button><div id="selectedJobsNote"></div>`;
+    } else {
+        const noKeys = !Array.isArray(d.sources_active) || d.sources_active.filter(s => s !== "Company ATS").length === 0;
+        if (noKeys) {
+            h += `<p class="jobs-note">ℹ️ For wider in-page listings (incl. LinkedIn/Indeed coverage), add a job-source API key on the backend — e.g. <b>JSearch</b> (<code>RAPIDAPI_KEY</code>), <b>Adzuna</b> (<code>ADZUNA_APP_ID</code>/<code>ADZUNA_APP_KEY</code>) or <b>SerpApi</b> (<code>SERPAPI_KEY</code>). Meanwhile, use the search links above.</p>`;
+        } else {
+            h += `<p class="jobs-note">No matching openings from the active sources for that role/location. Try a broader role or different location, or use the platform links above.</p>`;
+        }
+    }
+    return h;
+}
+
+document.addEventListener("click", async function (e) {
+    if (e.target.id !== "searchJobsBtn") return;
+    const role = (document.getElementById("jobRole").value || "").trim();
+    const location = (document.getElementById("jobLocation").value || "").trim();
+    const out = document.getElementById("jobsResults");
+    if (!role) { out.innerHTML = `<p class="match-err">⚠️ Enter a role to search.</p>`; return; }
+    const btn = e.target;
+    btn.disabled = true; btn.textContent = "Searching...";
+    out.innerHTML = `<div class="match-loading">Searching openings…</div>`;
+    try {
+        const res = await fetch(`${API_BASE}/search-jobs`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role: role, location: location, country: "in" })
+        });
+        const data = await res.json();
+        if (data.success) {
+            out.innerHTML = renderJobs(data);
+        } else {
+            out.innerHTML = `<p class="match-err">⚠️ ${_esc(data.error || "Search failed.")}</p>`;
+        }
+    } catch (err) {
+        out.innerHTML = `<p class="match-err">⚠️ Couldn't reach the server. Is the backend running?</p>`;
+    }
+    btn.disabled = false; btn.textContent = "Search";
+});
+
+// Save the jobs the user ticked (for later steps)
+document.addEventListener("click", function (e) {
+    if (e.target.id !== "saveSelectedJobsBtn") return;
+    const sel = [];
+    document.querySelectorAll(".job-chk:checked").forEach(c => {
+        const idx = parseInt(c.getAttribute("data-idx"));
+        if (window.__lastJobs && window.__lastJobs[idx]) sel.push(window.__lastJobs[idx]);
+    });
+    window.__selectedJobs = sel;
+    try { localStorage.setItem("rf_selected_jobs", JSON.stringify(sel)); } catch (err) {}
+    const note = document.getElementById("selectedJobsNote");
+    if (note) {
+        note.innerHTML = sel.length
+            ? `<p class="jobs-saved">✅ Saved ${sel.length} job${sel.length > 1 ? "s" : ""}. Scroll to “Tailor &amp; Apply” to make a unique resume for each.</p>`
+            : `<p class="match-err">Tick at least one job first.</p>`;
+    }
+    // Reflect readiness in the Tailor & Apply section
+    const appsOut = document.getElementById("appsResults");
+    if (appsOut && sel.length) {
+        appsOut.innerHTML = `<p class="apps-hint">✅ ${sel.length} job${sel.length > 1 ? "s" : ""} selected — click <b>“Generate tailored resumes”</b> above to make a unique resume for each.</p>`;
+    }
+});
+
+// ===== Steps 3-5: A unique tailored resume for EACH selected job =====
+function _appName() {
+    return ((window.__resumeText || "").split("\n")[0] || "Candidate").trim();
+}
+function _persistApps() {
+    try { localStorage.setItem("rf_applications", JSON.stringify(window.__applications || [])); } catch (e) {}
+}
+function _appSummary() {
+    const apps = window.__applications || [];
+    const done = apps.filter(a => a.finalized).length;
+    return `${done} of ${apps.length} finalized`;
+}
+function renderApps() {
+    const apps = window.__applications || [];
+    if (!apps.length) return "";
+    let h = `<p class="apps-summary">${_appSummary()}</p>`;
+    apps.forEach((a, i) => {
+        h += `<div class="app-card${a.finalized ? " finalized" : ""}">`
+          + `<div class="app-head"><div>`
+          + `<div class="app-title">${_esc(a.job.title)}</div>`
+          + `<div class="app-company">${_esc(a.job.company)}${a.job.location ? " · " + _esc(a.job.location) : ""}</div>`
+          + `</div><label class="app-final"><input type="checkbox" class="app-final-chk" data-idx="${i}" ${a.finalized ? "checked" : ""}> Finalize</label></div>`;
+        if (a.error) {
+            h += `<p class="match-err">⚠️ ${_esc(a.error)}</p>`;
+        } else {
+            if (Array.isArray(a.changes) && a.changes.length) {
+                h += `<div class="app-changes"><b>Tailored:</b> ${a.changes.map(_esc).join("; ")}</div>`;
+            }
+            h += `<div class="app-actions">`
+              + `<button class="app-view pdf-btn" data-idx="${i}">👁 View resume</button>`
+              + `<button class="app-dl pdf-btn" data-idx="${i}">📥 Download PDF</button>`
+              + `</div><div class="app-resume" id="appResume${i}" style="display:none;"></div>`;
+        }
+        h += `</div>`;
+    });
+    return h;
+}
+
+document.addEventListener("click", async function (e) {
+    if (e.target.id !== "genAppsBtn") return;
+    const out = document.getElementById("appsResults");
+    const jobs = window.__selectedJobs || [];
+    if (!window.__resumeText) { out.innerHTML = `<p class="match-err">⚠️ Generate a resume first.</p>`; return; }
+    if (!jobs.length) { out.innerHTML = `<p class="match-err">⚠️ Pick jobs above first — tick them and click “Save selected jobs”.</p>`; return; }
+    const btn = e.target; btn.disabled = true;
+    window.__applications = [];
+    for (let i = 0; i < jobs.length; i++) {
+        const job = jobs[i];
+        btn.textContent = `✨ Tailoring ${i + 1} of ${jobs.length}…`;
+        out.innerHTML = `<div class="match-loading">Writing a unique resume for “${_esc(job.title)}” (${i + 1}/${jobs.length})…</div>`;
+        const jd = [job.title, job.company, job.snippet].filter(Boolean).join("\n");
+        const app = { job: job, role: job.title || "", finalized: false };
+        try {
+            const res = await fetch(`${API_BASE}/tailor-resume`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ resume: window.__resumeText, job_description: jd, role: job.title || "", name: _appName() })
+            });
+            const data = await res.json();
+            if (data.success) {
+                app.tailored_resume = data.tailored_resume;
+                app.changes = data.changes || [];
+                app.requirements = data.requirements || {};
+            } else {
+                app.error = data.error || "Could not tailor.";
+            }
+        } catch (err) {
+            app.error = "Couldn't reach the server.";
+        }
+        window.__applications.push(app);
+    }
+    _persistApps();
+    out.innerHTML = renderApps();
+    btn.disabled = false; btn.textContent = "🔄 Regenerate tailored resumes";
+});
+
+// View / Download per application
+document.addEventListener("click", function (e) {
+    const v = e.target.closest(".app-view");
+    if (v) {
+        const i = +v.getAttribute("data-idx");
+        const box = document.getElementById("appResume" + i);
+        const app = (window.__applications || [])[i];
+        if (!box || !app) return;
+        if (box.style.display === "none") {
+            box.innerHTML = formatResumeHTML(app.tailored_resume || "");
+            box.style.display = "block"; v.textContent = "🔼 Hide resume";
+        } else {
+            box.style.display = "none"; v.textContent = "👁 View resume";
+        }
+        return;
+    }
+    const d = e.target.closest(".app-dl");
+    if (d) {
+        const i = +d.getAttribute("data-idx");
+        const app = (window.__applications || [])[i];
+        if (!app || !app.tailored_resume) return;
+        const tpl = (document.getElementById("appsTemplate") || {}).value || "classic";
+        _downloadApp(app, tpl);
+    }
+});
+
+// Finalize toggle per application
+document.addEventListener("change", function (e) {
+    const c = e.target.closest(".app-final-chk");
+    if (!c) return;
+    const i = +c.getAttribute("data-idx");
+    if (window.__applications && window.__applications[i]) {
+        window.__applications[i].finalized = c.checked;
+        _persistApps();
+    }
+    const card = c.closest(".app-card"); if (card) card.classList.toggle("finalized", c.checked);
+    const s = document.querySelector(".apps-summary"); if (s) s.textContent = _appSummary();
+});
+
+async function _downloadApp(app, template) {
+    try {
+        const res = await fetch(`${API_BASE}/render-resume`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ resume: app.tailored_resume, name: _appName(), role: app.role || "", template: template })
+        });
+        if (!res.ok) throw new Error("render failed");
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = (_appName() + "_" + (app.role || "") + "_Resume.pdf").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace("_pdf", ".pdf");
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (err) {
+        alert("Could not download the PDF. Is the backend running?");
+    }
+}
     </script>
     <footer id="contact" class="footer">
 

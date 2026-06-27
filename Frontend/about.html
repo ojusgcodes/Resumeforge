@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>About · ResumeForge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --cream:#f7f5ef; --ink:#15110c; --muted:#54503f; --muted2:#6a6557;
+    --accent:#9a3b1c; --border:#e3ded2; --card:#fffdf9;
+}
+body.dark-mode {
+    --cream:#0e0d0b; --ink:#f3efe6; --muted:#a7a294; --muted2:#8f8a7d;
+    --accent:#e07b46; --border:#2a2823; --card:#17150f;
+}
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Inter',Arial,sans-serif; -webkit-font-smoothing:antialiased; }
+html { scroll-behavior:smooth; }
+body { background:var(--cream); color:var(--ink); transition:background .3s; }
+h1,h2,h3,h4,.logo { font-family:'Playfair Display',Georgia,serif; letter-spacing:-.01em; }
+
+.navbar {
+    position:sticky; top:0; z-index:100;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 5%; background:rgba(247,245,239,.85); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);
+}
+body.dark-mode .navbar { background:rgba(14,13,11,.85); }
+.logo { font-weight:700; font-size:1.5rem; color:var(--ink); }
+.logo span { color:var(--accent); }
+.nav-links { display:flex; gap:22px; list-style:none; }
+.nav-links a { text-decoration:none; color:var(--muted); font-weight:500; font-size:.95rem; transition:.2s; }
+.nav-links a:hover, .nav-links a.active { color:var(--accent); }
+.nav-right { display:flex; gap:10px; align-items:center; }
+.theme-toggle { width:38px; height:38px; border:1px solid var(--border); background:none; color:var(--ink); border-radius:10px; cursor:pointer; font-size:1rem; }
+.cta { background:var(--ink); color:var(--cream); text-decoration:none; padding:10px 18px; border-radius:6px; font-weight:600; font-size:.9rem; }
+
+.hero { text-align:center; padding:90px 20px 50px; max-width:820px; margin:auto; }
+.kicker { display:inline-block; text-transform:uppercase; letter-spacing:.18em; font-size:.72rem; font-weight:600; color:var(--accent); margin-bottom:20px; }
+.hero h1 { font-size:3.4rem; font-weight:700; line-height:1.1; margin-bottom:20px; }
+.hero h1 em { color:var(--accent); }
+.hero p { color:var(--muted); font-size:1.15rem; line-height:1.8; max-width:640px; margin:auto; }
+
+.wrap { max-width:1080px; margin:auto; padding:20px; }
+.section-title { text-align:center; margin:60px 0 8px; font-size:2.1rem; font-weight:700; }
+.section-sub { text-align:center; color:var(--muted); margin-bottom:34px; font-size:1rem; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; }
+.card {
+    background:var(--card); border:1px solid var(--border); border-radius:16px;
+    padding:26px; transition:transform .2s, box-shadow .2s;
+}
+.card:hover { transform:translateY(-4px); box-shadow:0 16px 36px rgba(20,20,10,.08); }
+.card .ic { font-size:1.9rem; display:block; margin-bottom:12px; }
+.card h3 { font-size:1.3rem; margin-bottom:10px; color:var(--ink); }
+.card p { color:var(--muted); line-height:1.7; font-size:.96rem; }
+.card ul { margin:12px 0 0 18px; color:var(--muted2); line-height:1.8; font-size:.92rem; }
+.card ul li { margin-bottom:4px; }
+
+.flow {
+    background:var(--card); border:1px solid var(--border); border-radius:16px;
+    padding:28px; margin-top:30px;
+}
+.flow h3 { font-size:1.4rem; margin-bottom:18px; color:var(--accent); text-align:center; }
+.flow-steps { display:flex; flex-wrap:wrap; justify-content:center; gap:10px; align-items:center; }
+.flow-step { background:var(--cream); border:1px solid var(--border); border-radius:999px; padding:10px 18px; font-size:.9rem; font-weight:600; color:var(--ink); }
+.flow-arrow { color:var(--accent); font-weight:700; }
+
+.footer { margin-top:80px; background:var(--card); border-top:1px solid var(--border); text-align:center; padding:36px 20px; }
+.footer h3 { font-size:1.6rem; color:var(--accent); margin-bottom:10px; }
+.footer p { color:var(--muted2); margin:5px 0; font-size:.92rem; }
+.footer a { color:var(--accent); text-decoration:none; }
+
+@media (max-width:640px){ .hero h1{ font-size:2.4rem; } .nav-links{ display:none; } }
+</style>
+</head>
+<body>
+<script>try{if(localStorage.getItem("rf_theme")==="dark"){document.body.classList.add("dark-mode");}}catch(e){}</script>
+
+<nav class="navbar">
+    <div class="logo">Resume<span>Forge</span></div>
+    <ul class="nav-links">
+        <li><a href="index.html#home">Home</a></li>
+        <li><a href="index.html#features">Features</a></li>
+        <li><a href="index.html#samples">Samples</a></li>
+        <li><a href="index.html#generate">Generate</a></li>
+        <li><a href="about.html" class="active">About</a></li>
+    </ul>
+    <div class="nav-right">
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">🌙</button>
+        <a class="cta" href="index.html#generate">Launch App</a>
+    </div>
+</nav>
+
+<section class="hero">
+    <span class="kicker">About ResumeForge</span>
+    <h1>Everything ResumeForge <em>can do</em></h1>
+    <p>ResumeForge is an AI-powered career platform that turns your GitHub and LinkedIn into recruiter-ready resumes — then helps you find roles, tailor a unique resume for each job, and prepare to apply. Here's the full picture, in detail.</p>
+</section>
+
+<div class="wrap">
+
+    <!-- ============ RESUME CREATION ============ -->
+    <h2 class="section-title">1 · Build Your Resume with AI</h2>
+    <p class="section-sub">From your real profile to a polished, ATS-friendly resume in seconds.</p>
+    <div class="grid">
+        <div class="card">
+            <span class="ic">🤖</span>
+            <h3>AI Resume Generation</h3>
+            <p>Enter your GitHub URL and upload your LinkedIn, optionally with a target company and role. The AI reads everything and writes a complete, recruiter-ready resume tailored to that role — summary, skills, experience, projects and education.</p>
+        </div>
+        <div class="card">
+            <span class="ic">📄</span>
+            <h3>LinkedIn Import (PDF &amp; Screenshots)</h3>
+            <p>Upload your LinkedIn profile as a PDF (recommended) or as screenshots. The system reads it with AI, and falls back to local text extraction if needed — with safeguards on file size and page count so uploads stay reliable.</p>
+        </div>
+        <div class="card">
+            <span class="ic">🐙</span>
+            <h3>GitHub Analysis</h3>
+            <p>Your GitHub is scanned for your username, repositories, top languages and skills, and bio. Those real projects and technologies become concrete, evidence-backed points on your resume — the kind interviewers actually ask about.</p>
+        </div>
+    </div>
+
+    <!-- ============ EDIT & CUSTOMIZE ============ -->
+    <h2 class="section-title">2 · Edit &amp; Customize</h2>
+    <p class="section-sub">Refine your resume by chatting, or design it freely like Canva.</p>
+    <div class="grid">
+        <div class="card">
+            <span class="ic">💬</span>
+            <h3>AI Chat Editor</h3>
+            <p>A side panel where you simply tell the AI what to change — "make the summary shorter," "add more about leadership," "remove the hobbies" — and it rewrites your resume instantly.</p>
+            <ul>
+                <li>Conversational, unlimited edits</li>
+                <li>One-click Undo to step back</li>
+                <li>Closable with a click, Esc, or the floating button</li>
+            </ul>
+        </div>
+        <div class="card">
+            <span class="ic">🧩</span>
+            <h3>Editor 1 — Blocks (ATS-friendly)</h3>
+            <p>A drag-and-drop editor where every section is a movable, resizable, editable block. Change fonts, sizes, colors and alignment, add text or images, and keep text crisp and machine-readable for ATS systems.</p>
+        </div>
+        <div class="card">
+            <span class="ic">🖼️</span>
+            <h3>Editor 2 — Canvas (free design)</h3>
+            <p>A true Canva-style canvas. Every element has move, scale and rotate handles — flip images, layer elements, add photos and text anywhere, and design your resume with complete creative freedom.</p>
+        </div>
+    </div>
+
+    <!-- ============ TEMPLATES ============ -->
+    <h2 class="section-title">3 · Professional Templates</h2>
+    <p class="section-sub">Pick a design, download a polished PDF.</p>
+    <div class="grid">
+        <div class="card">
+            <span class="ic">🎨</span>
+            <h3>Six Resume Templates</h3>
+            <p>Choose from a gallery with live previews and download your resume as a clean, print-ready PDF in any design:</p>
+            <ul>
+                <li>Slate Header — dark banner with initials</li>
+                <li>Photo Header — avatar + label columns</li>
+                <li>Green Accent — sidebar layout</li>
+                <li>Classic — centered, serif, traditional</li>
+                <li>Mauve Elegant — refined serif band</li>
+                <li>Professional — bordered two-column</li>
+            </ul>
+        </div>
+        <div class="card">
+            <span class="ic">📥</span>
+            <h3>One-Click PDF Download</h3>
+            <p>Every template renders to a high-quality PDF in your browser. Tailored resumes are saved with professional file names automatically — like <b>FirstName_LastName_Role_Resume.pdf</b> — so they're ready to upload to any application.</p>
+        </div>
+    </div>
+
+    <!-- ============ JOB TOOLKIT ============ -->
+    <h2 class="section-title">4 · Find Jobs &amp; Apply Smarter</h2>
+    <p class="section-sub">The full job-hunt toolkit, built in.</p>
+    <div class="grid">
+        <div class="card">
+            <span class="ic">🎯</span>
+            <h3>AI Role Matching</h3>
+            <p>The AI reads your profile and tells you which roles and companies you can realistically apply to right now — plus <b>stretch roles</b> you're close to, exactly which skills you'd need to add to reach them, and company types that fit you.</p>
+        </div>
+        <div class="card">
+            <span class="ic">🔎</span>
+            <h3>Multi-Source Job Search</h3>
+            <p>Search live openings from multiple legal sources at once — aggregator APIs (Adzuna, Google-for-Jobs) and company ATS boards (Greenhouse, Lever) — merged and de-duplicated, each tagged with its source.</p>
+            <ul>
+                <li>One-click search links for LinkedIn, Indeed, Internshala, Naukri, Wellfound &amp; Y Combinator</li>
+                <li>Tick the jobs you want and save them</li>
+            </ul>
+        </div>
+        <div class="card">
+            <span class="ic">🗂️</span>
+            <h3>Tailor &amp; Apply</h3>
+            <p>For every job you select, the AI writes a <b>unique resume tailored to that exact role</b> — reordering relevant projects, matching keywords, and rewriting your headline. Review each one, download it, and finalize it before applying.</p>
+        </div>
+    </div>
+
+    <!-- ============ PLATFORM ============ -->
+    <h2 class="section-title">5 · Your Account &amp; Experience</h2>
+    <p class="section-sub">Personal, polished, and yours.</p>
+    <div class="grid">
+        <div class="card">
+            <span class="ic">🔐</span>
+            <h3>Accounts &amp; Login</h3>
+            <p>Sign up and log in securely. Passwords are encrypted (never stored as plain text), and your session is remembered so you stay logged in when you return.</p>
+        </div>
+        <div class="card">
+            <span class="ic">🌗</span>
+            <h3>Light &amp; Dark Mode</h3>
+            <p>Switch between an elegant light theme and a warm dark mode with one click. Your choice is remembered across visits, and applies to the whole site.</p>
+        </div>
+        <div class="card">
+            <span class="ic">🖥️</span>
+            <h3>Resume Samples &amp; Smart Layout</h3>
+            <p>Browse real sample resumes in a gallery with click-to-enlarge previews. After generating, your resume stays pinned beside all the tools in a two-column layout — no endless scrolling.</p>
+        </div>
+    </div>
+
+    <!-- ============ THE FLOW ============ -->
+    <div class="flow">
+        <h3>How it all fits together</h3>
+        <div class="flow-steps">
+            <span class="flow-step">LinkedIn + GitHub</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">Generate resume</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">Edit &amp; design</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">Match roles</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">Find jobs</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">Tailor per job</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">Download &amp; apply</span>
+        </div>
+    </div>
+
+</div>
+
+<footer class="footer">
+    <h3>ResumeForge</h3>
+    <p>AI-powered ATS resume builder &amp; job-application platform for students, developers, and professionals.</p>
+    <p>💬 Give your feedback at <a href="mailto:resumeforgeofficial@gmail.com">resumeforgeofficial@gmail.com</a></p>
+    <p style="margin-top:12px; font-size:.85rem; color:var(--muted2);">© 2026 ResumeForge. All Rights Reserved.</p>
+</footer>
+
+<script>
+(function () {
+    const btn = document.getElementById("themeToggle");
+    function sync() {
+        const dark = document.body.classList.contains("dark-mode");
+        btn.textContent = dark ? "☀️" : "🌙";
+    }
+    sync();
+    btn.addEventListener("click", () => {
+        const dark = document.body.classList.toggle("dark-mode");
+        try { localStorage.setItem("rf_theme", dark ? "dark" : "light"); } catch (e) {}
+        sync();
+    });
+})();
+</script>
+</body>
+</html>

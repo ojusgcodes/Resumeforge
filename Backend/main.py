@@ -615,6 +615,545 @@ def download_template(template: str):
     )
 
 
+# ============================================================
+# STEP 1 — AI ROLE MATCHING
+# (decides which roles/companies the candidate can apply to,
+#  plus stretch roles and what's needed to reach them)
+# ============================================================
+
+import json as _json
+
+
+class RoleMatchRequest(BaseModel):
+    resume: str = ""
+    linkedin_data: str = ""
+    github_skills: str = ""
+    github_bio: str = ""
+
+
+def _extract_json(text):
+    """Pull the first JSON object out of an LLM response, tolerant of
+    code fences or surrounding prose."""
+    if not text:
+        return None
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.strip("`")
+        if t.lower().startswith("json"):
+            t = t[4:]
+    start = t.find("{")
+    end = t.rfind("}")
+    if start == -1 or end == -1:
+        return None
+    try:
+        return _json.loads(t[start:end + 1])
+    except Exception:
+        return None
+
+
+@app.post("/match-roles")
+def match_roles(data: RoleMatchRequest):
+    resume = (data.resume or "").strip()
+    profile = (data.linkedin_data or "").strip()
+    gh_skills = (data.github_skills or "").strip()
+    gh_bio = (data.github_bio or "").strip()
+
+    if not resume and not profile and not gh_skills:
+        return {"success": False, "error": "No candidate information available. Generate a resume first."}
+
+    prompt = f"""
+You are a career advisor and technical recruiter. Analyze the candidate below and
+decide which job roles and companies they can realistically apply to RIGHT NOW,
+plus "stretch" roles they are close to.
+
+CANDIDATE RESUME:
+{resume}
+
+LINKEDIN PROFILE INFO:
+{profile or "N/A"}
+
+GITHUB SKILLS: {gh_skills or "N/A"}
+GITHUB BIO: {gh_bio or "N/A"}
+
+Return ONLY valid JSON (no markdown, no commentary) in EXACTLY this shape:
+{{
+  "summary": "one-line read of the candidate's current level",
+  "qualified_roles": [
+    {{"role": "Job title", "level": "Intern/Junior/Mid/Senior", "reason": "short why they qualify"}}
+  ],
+  "stretch_roles": [
+    {{"role": "Job title", "gap": ["missing skill 1", "missing skill 2"], "advice": "what to do to reach it"}}
+  ],
+  "target_companies": [
+    {{"name": "Company or company-type", "fit": "why it fits this candidate"}}
+  ]
+}}
+
+Rules:
+- Base everything strictly on the candidate's actual skills, projects, and experience. Do not invent skills.
+- 3 to 6 qualified_roles, 2 to 4 stretch_roles, 3 to 6 target_companies.
+- Keep each text field short (one sentence).
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        parsed = _extract_json(response.text or "")
+    except Exception as e:
+        print("Role match error:", str(e))
+        return {"success": False, "error": "The role analyzer is unavailable right now. Please try again."}
+
+    if not parsed:
+        return {"success": False, "error": "Could not analyze roles. Please try again."}
+
+    parsed["success"] = True
+    return parsed
+
+
+# ============================================================
+# STEP 2 — JOB OPENING SEARCH (multi-source)
+# Runs every CONFIGURED provider, merges + de-duplicates results,
+# and tags each job with its source. Providers:
+#   1. Aggregators: Adzuna, JSearch (Google Jobs), SerpApi (Google Jobs)
+#   2. ATS boards:  Greenhouse, Lever  (free, no key)
+#   3. Official LinkedIn/Indeed read-APIs: do NOT exist publicly -> only
+#      reachable as one-click platform search links (see _platform_links)
+#   4. Scraper: optional JobSpy, DISABLED by default (see warning below)
+# Plus one-click search links to the platforms users browse manually.
+# ============================================================
+
+import urllib.parse as _urlparse
+
+ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID")
+ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY")
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")          # for JSearch (Google for Jobs)
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")            # for SerpApi Google Jobs
+
+# Companies whose ATS boards we query (free APIs). Override via env
+# ATS_GREENHOUSE_COMPANIES / ATS_LEVER_COMPANIES (comma separated tokens).
+DEFAULT_GREENHOUSE = ["stripe", "databricks", "figma", "gitlab", "robinhood"]
+DEFAULT_LEVER = ["netflix", "plaid", "ramp"]
+
+# WARNING: scraping LinkedIn/Indeed/Naukri violates their Terms of Service,
+# gets IPs/accounts blocked, and carries legal risk. This provider is OFF
+# unless the product owner explicitly sets ENABLE_SCRAPER=true AND installs
+# the optional `python-jobspy` package. Use at your own discretion.
+ENABLE_SCRAPER = os.getenv("ENABLE_SCRAPER", "").lower() in ("1", "true", "yes")
+
+
+class JobSearchRequest(BaseModel):
+    role: str
+    location: str = ""
+    country: str = "in"
+
+
+def _strip_html(t):
+    return re.sub(r"<[^>]+>", "", t or "").strip()
+
+
+def _platform_links(role, location):
+    q = _urlparse.quote_plus(role or "")
+    loc = _urlparse.quote_plus(location or "")
+    slug = _urlparse.quote((role or "").strip().lower().replace(" ", "-"))
+    return [
+        {"name": "LinkedIn Jobs", "url": f"https://www.linkedin.com/jobs/search/?keywords={q}&location={loc}"},
+        {"name": "Indeed", "url": f"https://www.indeed.com/jobs?q={q}&l={loc}"},
+        {"name": "Internshala", "url": f"https://internshala.com/internships/keywords-{q}"},
+        {"name": "Naukri", "url": f"https://www.naukri.com/{slug}-jobs"},
+        {"name": "Wellfound", "url": f"https://wellfound.com/jobs?q={q}"},
+        {"name": "Y Combinator", "url": f"https://www.workatastartup.com/companies?query={q}"},
+    ]
+
+
+# ---- Provider 1a: Adzuna ----
+def _provider_adzuna(role, location, country):
+    if not (ADZUNA_APP_ID and ADZUNA_APP_KEY):
+        return None
+    url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1"
+    params = {
+        "app_id": ADZUNA_APP_ID, "app_key": ADZUNA_APP_KEY,
+        "what": role, "where": location, "results_per_page": 20,
+        "content-type": "application/json",
+    }
+    r = requests.get(url, params=params, timeout=15)
+    r.raise_for_status()
+    out = []
+    for j in r.json().get("results", []):
+        out.append({
+            "title": j.get("title", ""),
+            "company": (j.get("company") or {}).get("display_name", ""),
+            "location": (j.get("location") or {}).get("display_name", ""),
+            "url": j.get("redirect_url", ""),
+            "snippet": _strip_html(j.get("description", ""))[:240],
+            "source": "Adzuna",
+        })
+    return out
+
+
+# ---- Provider 1b: JSearch (Google for Jobs -> LinkedIn/Indeed/etc.) ----
+def _provider_jsearch(role, location, country):
+    if not RAPIDAPI_KEY:
+        return None
+    query = role + (f" in {location}" if location else "")
+    r = requests.get(
+        "https://jsearch.p.rapidapi.com/search",
+        headers={"X-RapidAPI-Key": RAPIDAPI_KEY, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"},
+        params={"query": query, "page": "1", "num_pages": "1"},
+        timeout=15,
+    )
+    r.raise_for_status()
+    out = []
+    for j in (r.json().get("data") or []):
+        loc = ", ".join([x for x in [j.get("job_city"), j.get("job_country")] if x])
+        out.append({
+            "title": j.get("job_title", ""),
+            "company": j.get("employer_name", ""),
+            "location": loc,
+            "url": j.get("job_apply_link", "") or j.get("job_google_link", ""),
+            "snippet": _strip_html(j.get("job_description", ""))[:240],
+            "source": "Google Jobs",
+        })
+    return out
+
+
+# ---- Provider 1c: SerpApi Google Jobs ----
+def _provider_serpapi(role, location, country):
+    if not SERPAPI_KEY:
+        return None
+    r = requests.get(
+        "https://serpapi.com/search",
+        params={"engine": "google_jobs", "q": role, "location": location or "India", "api_key": SERPAPI_KEY},
+        timeout=20,
+    )
+    r.raise_for_status()
+    out = []
+    for j in (r.json().get("jobs_results") or []):
+        opts = j.get("apply_options") or []
+        link = opts[0].get("link", "") if opts else j.get("share_link", "")
+        out.append({
+            "title": j.get("title", ""),
+            "company": j.get("company_name", ""),
+            "location": j.get("location", ""),
+            "url": link,
+            "snippet": _strip_html(j.get("description", ""))[:240],
+            "source": "Google Jobs",
+        })
+    return out
+
+
+def _ats_companies(env_name, default):
+    v = os.getenv(env_name)
+    if v:
+        return [c.strip() for c in v.split(",") if c.strip()]
+    return default
+
+
+# ---- Provider 2: ATS boards (Greenhouse + Lever), free, no key ----
+def _provider_ats(role, location, country):
+    role_l = (role or "").lower()
+    out = []
+    for comp in _ats_companies("ATS_GREENHOUSE_COMPANIES", DEFAULT_GREENHOUSE):
+        try:
+            r = requests.get(f"https://boards-api.greenhouse.io/v1/boards/{comp}/jobs", timeout=8)
+            if r.status_code != 200:
+                continue
+            for j in (r.json().get("jobs") or []):
+                title = j.get("title", "")
+                if role_l and role_l not in title.lower():
+                    continue
+                out.append({
+                    "title": title, "company": comp.title(),
+                    "location": (j.get("location") or {}).get("name", ""),
+                    "url": j.get("absolute_url", ""), "snippet": "", "source": "Greenhouse",
+                })
+        except Exception:
+            continue
+    for comp in _ats_companies("ATS_LEVER_COMPANIES", DEFAULT_LEVER):
+        try:
+            r = requests.get(f"https://api.lever.co/v0/postings/{comp}?mode=json", timeout=8)
+            if r.status_code != 200:
+                continue
+            for j in (r.json() or []):
+                title = j.get("text", "")
+                if role_l and role_l not in title.lower():
+                    continue
+                out.append({
+                    "title": title, "company": comp.title(),
+                    "location": (j.get("categories") or {}).get("location", ""),
+                    "url": j.get("hostedUrl", ""), "snippet": "", "source": "Lever",
+                })
+        except Exception:
+            continue
+    return out
+
+
+# ---- Provider 4: optional JobSpy scraper (OFF unless owner opts in) ----
+def _provider_scraper(role, location, country):
+    if not ENABLE_SCRAPER:
+        return None
+    try:
+        from jobspy import scrape_jobs
+    except Exception:
+        print("Scraper enabled but 'python-jobspy' is not installed.")
+        return None
+    try:
+        df = scrape_jobs(
+            site_name=["indeed", "linkedin"],
+            search_term=role,
+            location=location or "India",
+            results_wanted=15,
+        )
+        out = []
+        for _, row in df.iterrows():
+            out.append({
+                "title": str(row.get("title", "")),
+                "company": str(row.get("company", "")),
+                "location": str(row.get("location", "")),
+                "url": str(row.get("job_url", "")),
+                "snippet": _strip_html(str(row.get("description", "")))[:240],
+                "source": "Scraper",
+            })
+        return out
+    except Exception as e:
+        print("Scraper error:", str(e))
+        return None
+
+
+JOB_PROVIDERS = [
+    ("Adzuna", _provider_adzuna),
+    ("Google Jobs (JSearch)", _provider_jsearch),
+    ("Google Jobs (SerpApi)", _provider_serpapi),
+    ("Company ATS", _provider_ats),
+    ("Scraper", _provider_scraper),
+]
+
+
+@app.post("/search-jobs")
+def search_jobs(data: JobSearchRequest):
+    role = (data.role or "").strip()
+    if not role:
+        return {"success": False, "error": "Please choose a role to search for."}
+
+    location = (data.location or "").strip()
+    country = (data.country or "in").strip().lower() or "in"
+
+    all_jobs = []
+    sources_active = []
+    for name, fn in JOB_PROVIDERS:
+        try:
+            res = fn(role, location, country)
+        except Exception as e:
+            print(f"Provider {name} error:", str(e))
+            res = None
+        if res is None:
+            continue
+        sources_active.append(name)
+        all_jobs.extend(res)
+
+    # De-duplicate by (title, company)
+    seen = set()
+    deduped = []
+    for j in all_jobs:
+        key = (j.get("title", "").strip().lower(), j.get("company", "").strip().lower())
+        if not key[0] or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(j)
+
+    return {
+        "success": True,
+        "jobs": deduped[:40],
+        "sources_active": sources_active,
+        "platform_links": _platform_links(role, location),
+    }
+
+
+# ============================================================
+# STEPS 3-5 — READ JD, TAILOR RESUME, SAVE AS NAMED PDF
+# ============================================================
+
+class TailorRequest(BaseModel):
+    resume: str = ""
+    job_description: str = ""
+    role: str = ""
+    name: str = ""
+
+
+def _ctx_from_text(resume_text, name, email, phone, location):
+    s = split_resume_sections(resume_text)
+    initials = "".join([w[0] for w in name.split()[:2]]).upper() or "CV"
+    return {
+        "name": html.escape(name),
+        "email": html.escape(email),
+        "phone": html.escape(phone),
+        "location": html.escape(location),
+        "initials": html.escape(initials),
+        "summary": clean_text(s["summary"]),
+        "skills": format_bullets(s["skills"]),
+        "experience": format_bullets(s["experience"]),
+        "education": clean_text(s["education"]),
+    }
+
+
+@app.post("/tailor-resume")
+def tailor_resume(data: TailorRequest):
+    resume = (data.resume or "").strip()
+    jd = (data.job_description or "").strip()
+    role = (data.role or "").strip()
+
+    if not resume:
+        return {"success": False, "error": "Generate a resume first."}
+    if not jd:
+        return {"success": False, "error": "Paste the job description first."}
+
+    prompt = f"""
+You are an expert resume writer and ATS specialist. Read the job description, then
+tailor the candidate's resume to it.
+
+CANDIDATE RESUME:
+{resume}
+
+JOB DESCRIPTION:
+{jd}
+
+TARGET ROLE: {role or "N/A"}
+
+Do TWO things:
+1. Extract what the job wants.
+2. Rewrite the resume to match it — change the headline/summary to fit the role,
+   move the most relevant projects/experience to the top, add matching skills and
+   keywords from the job description (only if the candidate plausibly has them — do
+   NOT invent fake jobs, employers, dates or degrees), and trim clearly irrelevant content.
+
+Keep these EXACT section headings so formatting stays intact:
+PROFESSIONAL SUMMARY:
+TECHNICAL SKILLS:
+EXPERIENCE:
+PROJECTS:
+EDUCATION:
+
+Return ONLY valid JSON (no markdown fences, no commentary) in EXACTLY this shape:
+{{
+  "requirements": {{
+    "skills": ["..."],
+    "experience_level": "e.g. 0-2 years / Intern / Mid",
+    "tools": ["..."],
+    "location": "...",
+    "duration": "e.g. 6 months / Full-time / N/A",
+    "responsibilities": ["..."],
+    "keywords": ["ATS keywords from the JD"]
+  }},
+  "headline": "new one-line headline for the candidate",
+  "changes": ["short bullet describing each change you made"],
+  "tailored_resume": "the full rewritten resume text, using the exact headings above"
+}}
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        parsed = _extract_json(response.text or "")
+    except Exception as e:
+        print("Tailor error:", str(e))
+        return {"success": False, "error": "The tailoring service is unavailable right now. Please try again."}
+
+    if not parsed or not parsed.get("tailored_resume"):
+        return {"success": False, "error": "Could not tailor the resume. Please try again."}
+
+    with open("tailored_resume.txt", "w", encoding="utf-8") as f:
+        f.write(clean_resume_markdown(parsed["tailored_resume"]))
+
+    parsed["success"] = True
+    return parsed
+
+
+def _professional_filename(name, role):
+    base = re.sub(r"[^A-Za-z0-9]+", "_", (name or "").strip()).strip("_") or "Resume"
+    rolepart = re.sub(r"[^A-Za-z0-9]+", "_", (role or "").strip()).strip("_")
+    return base + ("_" + rolepart if rolepart else "") + "_Resume.pdf"
+
+
+@app.get("/download-tailored/{template}")
+def download_tailored(template: str, role: str = ""):
+    if not os.path.exists("tailored_resume.txt"):
+        return {"success": False, "error": "No tailored resume yet. Tailor one first."}
+
+    with open("tailored_resume.txt", "r", encoding="utf-8") as f:
+        resume_text = f.read()
+
+    name = "Candidate Name"
+    email = "your.email@example.com"
+    phone = "+91 XXXXX XXXXX"
+    location = "Your City, India"
+    if os.path.exists("latest_contact.txt"):
+        with open("latest_contact.txt", "r", encoding="utf-8") as f:
+            cl = f.read().splitlines()
+        if len(cl) > 0 and cl[0]:
+            name = cl[0]
+        if len(cl) > 1 and cl[1]:
+            email = cl[1]
+        if len(cl) > 2 and cl[2]:
+            phone = cl[2]
+        if len(cl) > 3 and cl[3]:
+            location = cl[3]
+
+    tpl = TEMPLATES.get(template)
+    if not tpl:
+        return {"success": False, "error": "Unknown template."}
+
+    ctx = _ctx_from_text(resume_text, name, email, phone, location)
+    html_content = _fill(tpl, ctx)
+    pdf_file = render_html_to_pdf(html_content, f"tailored_{template}")
+
+    return FileResponse(
+        pdf_file,
+        media_type="application/pdf",
+        filename=_professional_filename(name, role)
+    )
+
+
+class RenderRequest(BaseModel):
+    resume: str = ""
+    name: str = ""
+    role: str = ""
+    template: str = "classic"
+
+
+@app.post("/render-resume")
+def render_resume(data: RenderRequest):
+    """Render ANY given resume text to a PDF (used to download a unique,
+    per-job tailored resume). Returns a professionally-named PDF."""
+    resume = (data.resume or "").strip()
+    if not resume:
+        return {"success": False, "error": "No resume to render."}
+
+    tpl = TEMPLATES.get(data.template or "classic") or TEMPLATES.get("classic")
+
+    name = (data.name or "Candidate Name").strip()
+    email = "your.email@example.com"
+    phone = "+91 XXXXX XXXXX"
+    location = "Your City, India"
+    if os.path.exists("latest_contact.txt"):
+        with open("latest_contact.txt", "r", encoding="utf-8") as f:
+            cl = f.read().splitlines()
+        if len(cl) > 0 and cl[0]:
+            name = cl[0]
+        if len(cl) > 1 and cl[1]:
+            email = cl[1]
+        if len(cl) > 2 and cl[2]:
+            phone = cl[2]
+        if len(cl) > 3 and cl[3]:
+            location = cl[3]
+
+    ctx = _ctx_from_text(resume, name, email, phone, location)
+    html_content = _fill(tpl, ctx)
+    pdf_file = render_html_to_pdf(html_content, "render_app")
+
+    return FileResponse(
+        pdf_file,
+        media_type="application/pdf",
+        filename=_professional_filename(name, data.role)
+    )
+
+
 @app.post("/generate")
 def generate_resume(data: ResumeRequest):
 
