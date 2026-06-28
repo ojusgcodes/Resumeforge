@@ -2223,8 +2223,8 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
                 Get Started Free
             </button>
 
-            <button class="secondary-btn">
-                Watch Demo
+            <button class="secondary-btn" id="watchDemoBtn">
+                ▶ Watch Demo
             </button>
 
         </div>
@@ -3107,6 +3107,16 @@ document.addEventListener("click", async function (e) {
 });
 
 // ===== Step 2: Job opening search =====
+// Banner urging users to install the Auto-Apply extension (or confirming it's
+// connected) — shown whenever job listings are displayed.
+function _extBanner() {
+    const on = document.documentElement.getAttribute("data-rf-ext") === "1";
+    if (on) {
+        return `<div class="ext-banner ext-on">🧩 <b>Auto-Apply extension connected.</b> Tick jobs → <b>Apply &amp; Track</b>, then open each posting and click <b>⚡ Fill this form</b>.</div>`;
+    }
+    return `<div class="ext-banner ext-off">🧩 <b>Install the free Auto-Apply Chrome extension</b> to auto-fill these job applications — fill an entire form in one click, you just review &amp; submit. <a href="#" id="extInstallLink">How to install →</a></div>`;
+}
+
 function renderJobs(d) {
     let h = "";
     if (Array.isArray(d.platform_links) && d.platform_links.length) {
@@ -3121,6 +3131,7 @@ function renderJobs(d) {
     }
     if (Array.isArray(d.jobs) && d.jobs.length) {
         window.__lastJobs = d.jobs;
+        h += _extBanner();
         h += `<p class="jobs-count">${d.jobs.length} openings found — tick the ones you want to apply to:</p><div class="job-list">`;
         d.jobs.forEach((j, i) => {
             h += `<label class="job-card"><input type="checkbox" class="job-chk" data-idx="${i}">`
@@ -3520,9 +3531,9 @@ document.addEventListener("click", function (e) {
     if (qo) { const u = qo.getAttribute("data-url"); if (u) window.open(u, "_blank"); return; }
     const qd = e.target.closest(".q-del");
     if (qd) { removeAutoQueue(qd.getAttribute("data-url")); return; }
-    if (e.target.id === "qExtHelp") {
+    if (e.target.id === "qExtHelp" || e.target.id === "extInstallLink") {
         e.preventDefault();
-        alert("Set up Auto-Apply in 2 steps:\n\n1) Open chrome://extensions → turn on Developer mode → Load unpacked → pick the 'Extension' folder.\n\n2) Come back here while logged in — the extension connects to your account automatically.\n\nThen open any job posting and click '⚡ Fill this form'.");
+        alert("Set up Auto-Apply in 2 steps:\n\n1) Open chrome://extensions → turn on Developer mode → Load unpacked → pick the 'Extension' folder.\n\n2) Come back here while logged in — the extension connects to your account automatically.\n\nThen open any job posting and click '⚡ Fill this form' to auto-fill the application.");
         return;
     }
 });
@@ -3679,6 +3690,91 @@ function closeResumes() {
     const o = document.getElementById("resumesOverlay");
     if (o) { o.classList.remove("open"); document.body.style.overflow = ""; }
 }
+
+// ===== Watch Demo video modal + live AI voiceover =====
+// The video carries the visuals, captions and music; the narration is spoken
+// live by the browser's speech engine, synced to each scene. (Baking a voice
+// track server-side wasn't possible, so this gives a real spoken voiceover.)
+const DEMO_VO = [
+    { t: 0,  text: "Meet ResumeForge — the A.I. platform that builds your resume and applies to jobs for you." },
+    { t: 6,  text: "Paste your GitHub and LinkedIn, and A.I. writes a recruiter-ready resume in seconds." },
+    { t: 12, text: "Pick from six professional templates, edit with the A.I. assistant, and download a polished PDF." },
+    { t: 18, text: "ResumeForge shows which roles you qualify for, and the skills to reach the others." },
+    { t: 24, text: "Search real job openings from multiple sources, and select the ones you want." },
+    { t: 30, text: "For every job you choose, A.I. writes a unique resume tailored to that exact role." },
+    { t: 36, text: "Our Chrome extension fills the whole application and attaches the right resume. You just review and submit." },
+    { t: 42, text: "Every application is tracked, and all your resumes are saved. Start free with ResumeForge today." }
+];
+let _voOn = true, _voScene = -1, _voVoice = null, _demoWired = false;
+const _ttsOk = typeof window !== "undefined" && "speechSynthesis" in window;
+
+function _pickVoice() {
+    if (!_ttsOk) return;
+    const vs = window.speechSynthesis.getVoices() || [];
+    _voVoice =
+        vs.find(v => /en(-|_)?US/i.test(v.lang) && /(aria|jenny|zira|samantha|natural|female)/i.test(v.name)) ||
+        vs.find(v => /^en/i.test(v.lang)) || vs[0] || null;
+}
+if (_ttsOk) { window.speechSynthesis.onvoiceschanged = _pickVoice; _pickVoice(); }
+
+function _speakScene(i) {
+    if (!_voOn || !_ttsOk || !DEMO_VO[i]) return;
+    try {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(DEMO_VO[i].text);
+        if (_voVoice) u.voice = _voVoice;
+        u.rate = 0.98; u.pitch = 1.0; u.volume = 1.0;
+        window.speechSynthesis.speak(u);
+    } catch (e) {}
+}
+function _stopVoice() { if (_ttsOk) { try { window.speechSynthesis.cancel(); } catch (e) {} } }
+
+function _wireDemo() {
+    if (_demoWired) return;
+    const v = document.getElementById("demoVideo");
+    if (!v) return;
+    _demoWired = true;
+    v.addEventListener("timeupdate", function () {
+        let idx = 0;
+        for (let i = 0; i < DEMO_VO.length; i++) if (v.currentTime >= DEMO_VO[i].t) idx = i;
+        if (idx !== _voScene) { _voScene = idx; _speakScene(idx); }
+    });
+    v.addEventListener("pause", _stopVoice);
+    v.addEventListener("ended", _stopVoice);
+}
+
+function _closeDemo() {
+    const o = document.getElementById("demoOverlay");
+    const v = document.getElementById("demoVideo");
+    _stopVoice();
+    if (v) { try { v.pause(); } catch (x) {} }
+    if (o) { o.style.display = "none"; document.body.style.overflow = ""; }
+}
+
+document.addEventListener("click", function (e) {
+    if (e.target.id === "watchDemoBtn") {
+        const o = document.getElementById("demoOverlay");
+        const v = document.getElementById("demoVideo");
+        _wireDemo();
+        if (o) { o.style.display = "flex"; document.body.style.overflow = "hidden"; }
+        _voScene = -1;
+        if (v) { try { v.currentTime = 0; v.play(); } catch (x) {} }
+        return;
+    }
+    if (e.target.id === "demoVoiceBtn") {
+        _voOn = !_voOn;
+        e.target.textContent = _voOn ? "🔊 Voiceover: On" : "🔇 Voiceover: Off";
+        if (!_voOn) _stopVoice(); else _speakScene(Math.max(0, _voScene));
+        return;
+    }
+    if (e.target.id === "demoClose" || e.target.id === "demoOverlay") { _closeDemo(); return; }
+});
+document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+        const o = document.getElementById("demoOverlay");
+        if (o && o.style.display === "flex") _closeDemo();
+    }
+});
 
 document.addEventListener("click", function (e) {
     if (e.target.id === "navResumesBtn") { openResumes(); return; }
@@ -4054,6 +4150,19 @@ updateTrackerCount();
     </div>
 </div>
 
+<!-- ===== DEMO VIDEO MODAL ===== -->
+<div id="demoOverlay" style="display:none;position:fixed;inset:0;z-index:4000;background:rgba(10,8,6,.82);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+    <div style="position:relative;width:min(92vw,960px);">
+        <button id="demoClose" aria-label="Close" style="position:absolute;top:-44px;right:0;background:none;border:0;color:#fff;font-size:30px;cursor:pointer;line-height:1;">&times;</button>
+        <video id="demoVideo" src="demo.mp4" controls playsinline preload="metadata"
+               style="width:100%;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5);background:#000;display:block;"></video>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;color:#eee;font-size:13px;">
+            <span>🎬 ResumeForge — full walkthrough</span>
+            <button id="demoVoiceBtn" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px;">🔊 Voiceover: On</button>
+        </div>
+    </div>
+</div>
+
 <!-- ===== RESUME HISTORY PANEL ===== -->
 <div class="jobs-overlay" id="resumesOverlay">
     <div class="jobs-modal">
@@ -4083,6 +4192,12 @@ body.dark-mode .rh-card { background: #1a1814; }
 body.dark-mode .rh-actions button { background: #242019; color: #e8e2d8; }
 body.dark-mode .rh-preview { background: #141210; }
 .rh-empty { text-align: center; color: #8a837c; padding: 30px 10px; }
+.ext-banner { border-radius: 10px; padding: 11px 14px; margin: 4px 0 14px; font-size: 13px; line-height: 1.5; }
+.ext-banner.ext-off { background: #fff7e6; border: 1px solid #f0d9a8; color: #7a5a12; }
+.ext-banner.ext-on { background: #e7f6ec; border: 1px solid #b9e3c6; color: #1f7a44; }
+.ext-banner a { font-weight: 700; color: #b8860b; text-decoration: underline; cursor: pointer; }
+body.dark-mode .ext-banner.ext-off { background: #2a2415; border-color: #4a3f1e; color: #e6c878; }
+body.dark-mode .ext-banner.ext-on { background: #16271c; border-color: #2c5238; color: #7fd3a0; }
 </style>
 
 <!-- ===== JOB OPENINGS PANEL ===== -->

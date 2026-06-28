@@ -1070,6 +1070,145 @@ def render_html_to_pdf(html_content, basename):
     return pdf_file
 
 
+# ============================================================
+# LIGHTWEIGHT PDF ENGINE (pure-Python, no headless browser)
+# Used for all resume / cover-letter downloads so rendering works on small
+# hosts (e.g. Render's 512MB tier) without launching Chromium, which OOMs.
+# Each template maps to an accent colour for a clean, professional look.
+# ============================================================
+
+TEMPLATE_ACCENTS = {
+    "classic": "#7f7773",
+    "slate": "#3f4a56",
+    "green": "#1d7a4d",
+    "mauve": "#7a3b5d",
+    "photo": "#2e6f9e",
+    "professional": "#9b918c",
+}
+
+
+def _section_lines(raw):
+    out = []
+    for ln in clean_resume_markdown(raw or "").splitlines():
+        ln = ln.strip()
+        if not ln or re.fullmatch(r"[-–—_]{2,}", ln):
+            continue
+        ln = re.sub(r"^[-•*]\s*", "", ln)
+        out.append(ln)
+    return out
+
+
+def build_resume_pdf(basename, resume_text, name, email, phone, location, template="classic"):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib.colors import HexColor, white
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
+    from reportlab.lib.styles import ParagraphStyle
+
+    accent = HexColor(TEMPLATE_ACCENTS.get((template or "classic"), "#7f7773"))
+    ink = HexColor("#222222")
+    pdf_file = f"{basename}_{secrets.token_hex(6)}.pdf"
+    doc = SimpleDocTemplate(
+        pdf_file, pagesize=A4,
+        leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
+        title=(name or "Resume")
+    )
+    cw = doc.width
+
+    name_s = ParagraphStyle("rf_name", fontName="Helvetica-Bold", fontSize=22, textColor=white, leading=25)
+    hcontact_s = ParagraphStyle("rf_hc", fontName="Helvetica", fontSize=9.5, textColor=white, leading=13)
+    head_s = ParagraphStyle("rf_head", fontName="Helvetica-Bold", fontSize=11, textColor=white, leading=14)
+    body_s = ParagraphStyle("rf_body", fontName="Helvetica", fontSize=10, leading=14, textColor=ink)
+    bullet_s = ParagraphStyle("rf_bul", fontName="Helvetica", fontSize=10, leading=14, leftIndent=10, textColor=ink)
+
+    def esc(t):
+        return html.escape(t or "")
+
+    # Coloured header band with name + contact.
+    rows = [[Paragraph(esc(name or "Candidate Name"), name_s)]]
+    contact = " &nbsp;|&nbsp; ".join([x for x in [esc(email), esc(phone), esc(location)] if x and x.strip()])
+    if contact:
+        rows.append([Paragraph(contact, hcontact_s)])
+    header = Table(rows, colWidths=[cw])
+    header.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), accent),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (0, 0), 11), ("BOTTOMPADDING", (0, -1), (-1, -1), 11),
+    ]))
+    story = [header, Spacer(1, 10)]
+
+    def bar(title):
+        t = Table([[Paragraph(title.upper(), head_s)]], colWidths=[cw])
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), accent),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        return t
+
+    s = split_resume_sections(resume_text or "")
+
+    def add(title, key, bullets=True):
+        lines = _section_lines(s.get(key, ""))
+        if not lines:
+            return
+        story.append(bar(title))
+        story.append(Spacer(1, 5))
+        if bullets:
+            for ln in lines:
+                story.append(Paragraph("•&nbsp; " + esc(ln), bullet_s))
+                story.append(Spacer(1, 2))
+        else:
+            story.append(Paragraph(esc(" ".join(lines)), body_s))
+        story.append(Spacer(1, 7))
+
+    add("Summary", "summary", bullets=False)
+    add("Experience", "experience", bullets=True)
+    add("Projects", "projects", bullets=True)
+    add("Skills", "skills", bullets=True)
+    add("Education", "education", bullets=False)
+
+    # If the resume didn't use recognised headings, just lay out the raw text.
+    if len(story) <= 2:
+        for ln in _section_lines(resume_text or ""):
+            story.append(Paragraph(esc(ln), body_s))
+            story.append(Spacer(1, 2))
+
+    doc.build(story)
+    return pdf_file
+
+
+def build_cover_pdf(basename, text, name, email, phone, location):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib.colors import grey
+    from reportlab.platypus import SimpleDocTemplate, Paragraph
+    from reportlab.lib.styles import ParagraphStyle
+
+    pdf_file = f"{basename}_{secrets.token_hex(6)}.pdf"
+    doc = SimpleDocTemplate(
+        pdf_file, pagesize=A4,
+        leftMargin=22 * mm, rightMargin=22 * mm, topMargin=20 * mm, bottomMargin=20 * mm
+    )
+    name_s = ParagraphStyle("cl_name", fontName="Helvetica-Bold", fontSize=16, leading=20, spaceAfter=2)
+    contact_s = ParagraphStyle("cl_contact", fontName="Helvetica", fontSize=9.5, textColor=grey, leading=13, spaceAfter=16)
+    body_s = ParagraphStyle("cl_body", fontName="Times-Roman", fontSize=11.5, leading=17, spaceAfter=10)
+
+    def esc(t):
+        return html.escape(t or "")
+
+    story = [Paragraph(esc(name or "Candidate Name"), name_s)]
+    contact = " &nbsp;•&nbsp; ".join([x for x in [esc(email), esc(phone), esc(location)] if x and x.strip()])
+    if contact:
+        story.append(Paragraph(contact, contact_s))
+    for para in re.split(r"\n\s*\n", (text or "").strip()):
+        para = para.strip()
+        if para:
+            story.append(Paragraph(esc(para).replace("\n", "<br/>"), body_s))
+    doc.build(story)
+    return pdf_file
+
+
 def _resume_context():
     if not os.path.exists("latest_resume.txt"):
         return None
@@ -1309,17 +1448,22 @@ TEMPLATES = {
 
 @app.get("/download-template/{template}")
 def download_template(template: str):
-    ctx = _resume_context()
-    if ctx is None:
-        return {"success": False, "error": "No resume generated yet."}
-
-    tpl = TEMPLATES.get(template)
-    if not tpl:
+    if template not in TEMPLATES and template != "professional":
         return {"success": False, "error": "Unknown template."}
+    if not os.path.exists("latest_resume.txt"):
+        return {"success": False, "error": "No resume generated yet."}
+    with open("latest_resume.txt", "r", encoding="utf-8") as f:
+        resume_text = f.read()
+    name, email, phone, location = _contact_or_default()
+    if os.path.exists("latest_contact.txt"):
+        with open("latest_contact.txt", "r", encoding="utf-8") as f:
+            cl = f.read().splitlines()
+        name = cl[0] if len(cl) > 0 and cl[0] else name
+        email = cl[1] if len(cl) > 1 and cl[1] else email
+        phone = cl[2] if len(cl) > 2 and cl[2] else phone
+        location = cl[3] if len(cl) > 3 and cl[3] else location
 
-    html_content = _fill(tpl, ctx)
-    pdf_file = render_html_to_pdf(html_content, f"resume_{template}")
-
+    pdf_file = build_resume_pdf(f"resume_{template}", resume_text, name, email, phone, location, template=template)
     return FileResponse(
         pdf_file,
         media_type="application/pdf",
@@ -1350,17 +1494,14 @@ def download_resume_pdf(data: ResumePDFRequest):
     name, email, phone, location = _contact_or_default(
         data.name, data.email, data.phone, data.location)
 
-    if (data.template or "").lower() == "professional":
-        html_content = _build_professional_html(resume, name, email, phone, location)
+    tmpl = (data.template or "classic")
+    if tmpl.lower() == "professional":
         filename = "ResumeForge_Professional_Template.pdf"
     else:
-        tpl = TEMPLATES.get(data.template or "classic") or TEMPLATES["classic"]
-        ctx = _ctx_from_text(resume, name, email, phone, location)
-        html_content = _fill(tpl, ctx)
         filename = (_professional_filename(name, data.role)
-                    if data.role else f"ResumeForge_{data.template}.pdf")
+                    if data.role else f"ResumeForge_{tmpl}.pdf")
 
-    pdf_file = render_html_to_pdf(html_content, f"resume_{data.template or 'classic'}")
+    pdf_file = build_resume_pdf(f"resume_{tmpl}", resume, name, email, phone, location, template=tmpl)
     return FileResponse(pdf_file, media_type="application/pdf", filename=filename)
 
 
@@ -1844,13 +1985,10 @@ def download_tailored(template: str, role: str = ""):
         if len(cl) > 3 and cl[3]:
             location = cl[3]
 
-    tpl = TEMPLATES.get(template)
-    if not tpl:
+    if template not in TEMPLATES and template != "professional":
         return {"success": False, "error": "Unknown template."}
 
-    ctx = _ctx_from_text(resume_text, name, email, phone, location)
-    html_content = _fill(tpl, ctx)
-    pdf_file = render_html_to_pdf(html_content, f"tailored_{template}")
+    pdf_file = build_resume_pdf(f"tailored_{template}", resume_text, name, email, phone, location, template=template)
 
     return FileResponse(
         pdf_file,
@@ -1877,8 +2015,6 @@ def render_resume(data: RenderRequest):
     if not resume:
         return {"success": False, "error": "No resume to render."}
 
-    tpl = TEMPLATES.get(data.template or "classic") or TEMPLATES.get("classic")
-
     # Contact comes from the request body (collision-safe). Falls back to the
     # shared file only when the body omits everything (legacy callers).
     name, email, phone, location = _contact_or_default(
@@ -1895,9 +2031,8 @@ def render_resume(data: RenderRequest):
         if len(cl) > 3 and cl[3]:
             location = cl[3]
 
-    ctx = _ctx_from_text(resume, name, email, phone, location)
-    html_content = _fill(tpl, ctx)
-    pdf_file = render_html_to_pdf(html_content, "render_app")
+    pdf_file = build_resume_pdf("render_app", resume, name, email, phone, location,
+                                template=data.template or "classic")
 
     return FileResponse(
         pdf_file,
@@ -2062,21 +2197,7 @@ def download_cover_letter(data: CoverLetterPDFRequest):
         if len(cl) > 3 and cl[3]:
             location = cl[3]
 
-    body = html.escape(text)
-    html_content = f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-@page {{ size: A4; margin: 22mm; }}
-* {{ box-sizing: border-box; }}
-body {{ font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; font-size: 12px; line-height: 1.75; }}
-.name {{ font-size: 23px; font-weight: 700; margin-bottom: 2px; }}
-.contact {{ font-size: 11px; color: #555; margin-bottom: 26px; border-bottom: 1px solid #ccc; padding-bottom: 14px; }}
-.body {{ white-space: pre-wrap; }}
-</style></head><body>
-<div class="name">{html.escape(name)}</div>
-<div class="contact">{html.escape(email)} &nbsp;·&nbsp; {html.escape(phone)} &nbsp;·&nbsp; {html.escape(location)}</div>
-<div class="body">{body}</div>
-</body></html>"""
-
-    pdf_file = render_html_to_pdf(html_content, "cover_letter")
+    pdf_file = build_cover_pdf("cover_letter", text, name, email, phone, location)
     return FileResponse(pdf_file, media_type="application/pdf", filename="Cover_Letter.pdf")
 
 
@@ -3074,7 +3195,6 @@ def download_professional_pdf():
         phone = cl[2] if len(cl) > 2 and cl[2] else phone
         location = cl[3] if len(cl) > 3 and cl[3] else location
 
-    html_content = _build_professional_html(resume_text, name, email, phone, location)
-    pdf_file = render_html_to_pdf(html_content, "professional_resume")
+    pdf_file = build_resume_pdf("professional_resume", resume_text, name, email, phone, location, template="professional")
     return FileResponse(pdf_file, media_type="application/pdf",
                         filename="ResumeForge_Professional_Template.pdf")
