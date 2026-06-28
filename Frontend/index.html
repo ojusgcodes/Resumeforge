@@ -2742,6 +2742,18 @@ window.__matchData = {
 if (window.activateChat) {
     window.activateChat(data.resume, { company: company, role: role });
 }
+// Save resume + vault to the account (if logged in)
+(function () {
+    const tok = (function(){ try { return localStorage.getItem("rf_token"); } catch(e){ return null; } })();
+    if (!tok) return;
+    const _h = { "Authorization": "Bearer " + tok, "Content-Type": "application/json" };
+    const ghVal = (document.getElementById("github") || {}).value || "";
+    const skillsVal = (data.github_analysis && data.github_analysis.skills) ? data.github_analysis.skills.join(", ") : "";
+    fetch(`${API_BASE}/resumes/save`, { method: "POST", headers: _h,
+        body: JSON.stringify({ kind: "resume", title: role || "", content: data.resume, job_company: company || "", job_role: role || "" }) }).catch(function(){});
+    fetch(`${API_BASE}/vault/save`, { method: "POST", headers: _h,
+        body: JSON.stringify({ full_name: (data.resume.split("\n")[0] || "").trim(), email: email || "", phone: phone || "", location: location || "", github_url: ghVal, skills: skillsVal }) }).catch(function(){});
+})();
 // Prefill the job-search inputs (Step 2)
 const _jr = document.getElementById("jobRole");
 if (_jr && role) _jr.value = role;
@@ -3340,32 +3352,65 @@ async function _downloadApp(app, template) {
     }
 }
 
-// ===== Steps 6-7: Assisted apply + application tracker =====
+// ===== Steps 6-7: Assisted apply + application tracker (DB when logged in) =====
 const TRACK_STATUSES = ["Applied", "Assessment", "Recruiter Call", "Interview", "Offer", "Rejected"];
 
-function getTracked() {
-    try { return JSON.parse(localStorage.getItem("rf_tracker") || "[]"); } catch (e) { return []; }
+function _authTok() { try { return localStorage.getItem("rf_token"); } catch (e) { return null; } }
+function _authHdr() {
+    const t = _authTok();
+    return t ? { "Authorization": "Bearer " + t, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
 }
-function saveTracked(list) {
-    try { localStorage.setItem("rf_tracker", JSON.stringify(list)); } catch (e) {}
-    updateTrackerCount();
-}
+
+// localStorage fallback (guests, not logged in)
+function getTracked() { try { return JSON.parse(localStorage.getItem("rf_tracker") || "[]"); } catch (e) { return []; } }
+function saveTracked(list) { try { localStorage.setItem("rf_tracker", JSON.stringify(list)); } catch (e) {} _trackerCache = list; updateTrackerCount(); }
+
+let _trackerCache = [];
+
 function updateTrackerCount() {
-    const n = getTracked().length;
-    const btn = document.getElementById("openTrackerBtn");
-    if (btn) btn.textContent = n ? `📋 My Applications (${n})` : "📋 My Applications";
-    const nav = document.getElementById("navTrackerBtn");
-    if (nav) nav.textContent = n ? `📋 My Applications (${n})` : "📋 My Applications";
+    const n = _authTok() ? _trackerCache.length : getTracked().length;
+    const label = n ? ` (${n})` : "";
+    const b = document.getElementById("openTrackerBtn"); if (b) b.textContent = "📋 My Applications" + label;
+    const nav = document.getElementById("navTrackerBtn"); if (nav) nav.textContent = "📋 My Applications" + label;
 }
-function addTrackedApp(o) {
-    const list = getTracked();
-    list.unshift({
-        id: Date.now() + "_" + Math.random().toString(36).slice(2, 7),
-        company: o.company || "", role: o.role || "", url: o.url || "",
-        status: "Applied", applied: new Date().toISOString().slice(0, 10),
-        followup: "", notes: ""
-    });
-    saveTracked(list);
+
+// Load from DB (logged in) or localStorage (guest), normalized to one shape
+async function loadTracker() {
+    if (_authTok()) {
+        try {
+            const res = await fetch(`${API_BASE}/applications`, { headers: _authHdr() });
+            const data = await res.json();
+            _trackerCache = (data.success ? (data.applications || []) : []).map(a => ({
+                id: a.id, company: a.company, role: a.role, url: a.url,
+                status: a.status || "Applied", applied: a.applied_date || "",
+                followup: a.followup_date || "", notes: a.notes || ""
+            }));
+        } catch (e) { _trackerCache = []; }
+    } else {
+        _trackerCache = getTracked();
+    }
+    updateTrackerCount();
+    return _trackerCache;
+}
+
+async function addTrackedApp(o) {
+    if (_authTok()) {
+        try {
+            await fetch(`${API_BASE}/applications/add`, {
+                method: "POST", headers: _authHdr(),
+                body: JSON.stringify({ company: o.company || "", role: o.role || "", url: o.url || "", status: "Applied" })
+            });
+        } catch (e) {}
+        await loadTracker();
+    } else {
+        const list = getTracked();
+        list.unshift({
+            id: Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+            company: o.company || "", role: o.role || "", url: o.url || "",
+            status: "Applied", applied: new Date().toISOString().slice(0, 10), followup: "", notes: ""
+        });
+        saveTracked(list);
+    }
 }
 
 // Apply & Track from a tailored job card
@@ -3382,12 +3427,11 @@ document.addEventListener("click", function (e) {
     setTimeout(() => { b.innerHTML = "✅ Apply &amp; Track"; }, 2600);
 });
 
-// Render the tracker
 function renderTracker() {
     const body = document.getElementById("trackerBody");
-    const list = getTracked();
+    const list = _trackerCache;
     if (!list.length) {
-        body.innerHTML = `<p class="jobs-note">No applications tracked yet. Generate tailored resumes for your selected jobs, then click <b>“✅ Apply &amp; Track”</b> on each.</p>`;
+        body.innerHTML = `<p class="jobs-note">No applications tracked yet. Generate tailored resumes for your selected jobs, then click <b>“✅ Apply &amp; Track”</b> on each.${_authTok() ? "" : " <br><small>Log in to save them to your account across devices.</small>"}</p>`;
         return;
     }
     let h = `<p class="apps-summary">${list.length} application${list.length > 1 ? "s" : ""}</p><div class="track-list">`;
@@ -3397,7 +3441,7 @@ function renderTracker() {
           + `<div class="track-role">${_esc(a.role || "")}</div>`
           + `<div class="track-meta">Applied ${_esc(a.applied)}${a.url ? ` · <a href="${_esc(a.url)}" target="_blank" rel="noopener">posting ↗</a>` : ""}</div>`
           + `<div class="track-controls">`
-          + `<select class="track-status track-status-${_esc(a.status)}" data-id="${a.id}">`
+          + `<select class="track-status" data-id="${a.id}">`
           + TRACK_STATUSES.map(s => `<option ${s === a.status ? "selected" : ""}>${s}</option>`).join("")
           + `</select>`
           + `<label style="font-size:.78rem;color:var(--muted);">Follow-up <input type="date" class="track-followup" data-id="${a.id}" value="${_esc(a.followup || "")}"></label>`
@@ -3409,40 +3453,62 @@ function renderTracker() {
     h += `</div>`;
     body.innerHTML = h;
 }
-function openTracker() {
-    renderTracker();
+
+async function openTracker() {
+    const body = document.getElementById("trackerBody");
+    if (body) body.innerHTML = `<div class="match-loading">Loading your applications…</div>`;
     const o = document.getElementById("trackerOverlay");
     if (o) { o.classList.add("open"); document.body.style.overflow = "hidden"; }
+    await loadTracker();
+    renderTracker();
 }
 function closeTracker() {
     const o = document.getElementById("trackerOverlay");
     if (o) { o.classList.remove("open"); document.body.style.overflow = ""; }
 }
 
-document.addEventListener("click", function (e) {
+document.addEventListener("click", async function (e) {
     if (e.target.id === "openTrackerBtn" || e.target.id === "navTrackerBtn") { openTracker(); return; }
     if (e.target.id === "trackerClose") { closeTracker(); return; }
     if (e.target.id === "trackerOverlay") { closeTracker(); return; }
     const del = e.target.closest(".track-del");
     if (del) {
         const id = del.getAttribute("data-id");
-        saveTracked(getTracked().filter(a => a.id !== id));
+        if (_authTok()) {
+            try { await fetch(`${API_BASE}/applications/delete`, { method: "POST", headers: _authHdr(), body: JSON.stringify({ id: parseInt(id) }) }); } catch (x) {}
+            await loadTracker();
+        } else {
+            saveTracked(getTracked().filter(a => String(a.id) !== String(id)));
+        }
         renderTracker();
     }
 });
 
 // Update status / follow-up / notes
-document.addEventListener("change", function (e) {
+document.addEventListener("change", async function (e) {
     const id = e.target.getAttribute && e.target.getAttribute("data-id");
     if (!id) return;
-    const list = getTracked();
-    const item = list.find(a => a.id === id);
-    if (!item) return;
-    if (e.target.classList.contains("track-status")) item.status = e.target.value;
-    else if (e.target.classList.contains("track-followup")) item.followup = e.target.value;
-    else if (e.target.classList.contains("track-notes")) item.notes = e.target.value;
+    let field = null;
+    if (e.target.classList.contains("track-status")) field = "status";
+    else if (e.target.classList.contains("track-followup")) field = "followup_date";
+    else if (e.target.classList.contains("track-notes")) field = "notes";
     else return;
-    saveTracked(list);
+    const value = e.target.value;
+    if (_authTok()) {
+        const body = { id: parseInt(id) }; body[field] = value;
+        try { await fetch(`${API_BASE}/applications/update`, { method: "POST", headers: _authHdr(), body: JSON.stringify(body) }); } catch (x) {}
+        const item = _trackerCache.find(a => String(a.id) === String(id));
+        if (item) { if (field === "status") item.status = value; else if (field === "followup_date") item.followup = value; else item.notes = value; }
+    } else {
+        const list = getTracked();
+        const item = list.find(a => String(a.id) === String(id));
+        if (item) {
+            if (field === "status") item.status = value;
+            else if (field === "followup_date") item.followup = value;
+            else item.notes = value;
+            saveTracked(list);
+        }
+    }
 });
 
 updateTrackerCount();

@@ -148,6 +148,43 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS resumes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'resume',
+            title TEXT, content TEXT NOT NULL,
+            job_company TEXT, job_role TEXT,
+            created_at REAL NOT NULL DEFAULT (strftime('%s','now'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            company TEXT, role TEXT, url TEXT,
+            status TEXT DEFAULT 'Applied',
+            applied_date TEXT, followup_date TEXT, notes TEXT,
+            resume_id INTEGER,
+            created_at REAL NOT NULL DEFAULT (strftime('%s','now')),
+            updated_at REAL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS profile_vault (
+            user_id INTEGER PRIMARY KEY,
+            full_name TEXT, email TEXT, phone TEXT, location TEXT,
+            linkedin_url TEXT, github_url TEXT, portfolio_url TEXT,
+            education TEXT, experience TEXT, skills TEXT, work_authorization TEXT,
+            updated_at REAL DEFAULT (strftime('%s','now'))
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -281,6 +318,199 @@ def logout(authorization: Optional[str] = Header(None)):
                 conn.commit()
             finally:
                 conn.close()
+    return {"success": True}
+
+
+# ============================================================
+# PER-USER DATA (applications, resume history, profile vault)
+# All require a valid session token; data is scoped to user_id.
+# ============================================================
+import datetime as _dt
+
+
+def _today():
+    return _dt.date.today().isoformat()
+
+
+class AppAddRequest(BaseModel):
+    company: str = ""
+    role: str = ""
+    url: str = ""
+    status: str = "Applied"
+
+
+class AppUpdateRequest(BaseModel):
+    id: int
+    status: Optional[str] = None
+    followup_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class AppDeleteRequest(BaseModel):
+    id: int
+
+
+class ResumeSaveRequest(BaseModel):
+    kind: str = "resume"
+    title: str = ""
+    content: str = ""
+    job_company: str = ""
+    job_role: str = ""
+
+
+class VaultRequest(BaseModel):
+    full_name: str = ""
+    email: str = ""
+    phone: str = ""
+    location: str = ""
+    linkedin_url: str = ""
+    github_url: str = ""
+    portfolio_url: str = ""
+    education: str = ""
+    experience: str = ""
+    skills: str = ""
+    work_authorization: str = ""
+
+
+@app.get("/applications")
+def list_applications(authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Not authenticated."}
+    conn = get_db()
+    try:
+        rows = db_all(conn,
+            "SELECT id, company, role, url, status, applied_date, followup_date, notes "
+            "FROM applications WHERE user_id = ? ORDER BY created_at DESC", (user["id"],))
+    finally:
+        conn.close()
+    return {"success": True, "applications": [dict(r) for r in rows]}
+
+
+@app.post("/applications/add")
+def add_application(data: AppAddRequest, authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Not authenticated."}
+    conn = get_db()
+    try:
+        db_exec(conn,
+            "INSERT INTO applications (user_id, company, role, url, status, applied_date) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user["id"], data.company, data.role, data.url, data.status or "Applied", _today()))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True}
+
+
+@app.post("/applications/update")
+def update_application(data: AppUpdateRequest, authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Not authenticated."}
+    conn = get_db()
+    try:
+        owns = db_one(conn, "SELECT id FROM applications WHERE id = ? AND user_id = ?", (data.id, user["id"]))
+        if not owns:
+            return {"success": False, "error": "Not found."}
+        if data.status is not None:
+            db_exec(conn, "UPDATE applications SET status = ? WHERE id = ?", (data.status, data.id))
+        if data.followup_date is not None:
+            db_exec(conn, "UPDATE applications SET followup_date = ? WHERE id = ?", (data.followup_date or None, data.id))
+        if data.notes is not None:
+            db_exec(conn, "UPDATE applications SET notes = ? WHERE id = ?", (data.notes, data.id))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True}
+
+
+@app.post("/applications/delete")
+def delete_application(data: AppDeleteRequest, authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Not authenticated."}
+    conn = get_db()
+    try:
+        db_exec(conn, "DELETE FROM applications WHERE id = ? AND user_id = ?", (data.id, user["id"]))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True}
+
+
+@app.post("/resumes/save")
+def save_resume_record(data: ResumeSaveRequest, authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Not authenticated."}
+    if not (data.content or "").strip():
+        return {"success": False, "error": "Empty resume."}
+    conn = get_db()
+    try:
+        db_exec(conn,
+            "INSERT INTO resumes (user_id, kind, title, content, job_company, job_role) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user["id"], data.kind or "resume", data.title, data.content, data.job_company, data.job_role))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True}
+
+
+@app.get("/resumes")
+def list_resumes(authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Not authenticated."}
+    conn = get_db()
+    try:
+        rows = db_all(conn,
+            "SELECT id, kind, title, job_company, job_role, content, created_at "
+            "FROM resumes WHERE user_id = ? ORDER BY created_at DESC", (user["id"],))
+    finally:
+        conn.close()
+    return {"success": True, "resumes": [dict(r) for r in rows]}
+
+
+@app.get("/vault")
+def get_vault(authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Not authenticated."}
+    conn = get_db()
+    try:
+        row = db_one(conn, "SELECT * FROM profile_vault WHERE user_id = ?", (user["id"],))
+    finally:
+        conn.close()
+    return {"success": True, "vault": dict(row) if row else {}}
+
+
+@app.post("/vault/save")
+def save_vault(data: VaultRequest, authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Not authenticated."}
+    fields = (data.full_name, data.email, data.phone, data.location, data.linkedin_url,
+              data.github_url, data.portfolio_url, data.education, data.experience,
+              data.skills, data.work_authorization)
+    conn = get_db()
+    try:
+        existing = db_one(conn, "SELECT user_id FROM profile_vault WHERE user_id = ?", (user["id"],))
+        if existing:
+            db_exec(conn,
+                "UPDATE profile_vault SET full_name=?, email=?, phone=?, location=?, linkedin_url=?, "
+                "github_url=?, portfolio_url=?, education=?, experience=?, skills=?, work_authorization=? "
+                "WHERE user_id=?", fields + (user["id"],))
+        else:
+            db_exec(conn,
+                "INSERT INTO profile_vault (user_id, full_name, email, phone, location, linkedin_url, "
+                "github_url, portfolio_url, education, experience, skills, work_authorization) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (user["id"],) + fields)
+        conn.commit()
+    finally:
+        conn.close()
     return {"success": True}
 
 
