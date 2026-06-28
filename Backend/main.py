@@ -44,13 +44,59 @@ model = genai.GenerativeModel("gemini-2.5-flash")
 
 app = FastAPI()
 
+# ---------------------------------------------------------------------------
+# CORS — locked to a configurable allow-list.
+# Set ALLOWED_ORIGINS on Render to a comma-separated list of your real
+# frontend URLs, e.g. "https://resumeforge.onrender.com,https://resumeforge.app".
+# If unset, falls back to "*" so local dev keeps working.
+# ---------------------------------------------------------------------------
+_origins_env = os.getenv("ALLOWED_ORIGINS", "").strip()
+ALLOWED_ORIGINS = [o.strip() for o in _origins_env.split(",") if o.strip()] or ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------------------------------------------------------------------------
+# Rate limiting — simple in-memory sliding window per client IP, applied to
+# the expensive AI / external-API endpoints to curb cost abuse and scraping.
+# In-memory means per-process (fine for a single Render instance); resets on
+# restart. For multi-instance, swap the store for Redis.
+# ---------------------------------------------------------------------------
+from collections import defaultdict, deque
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+_RL_HITS = defaultdict(deque)
+RL_PATHS = {
+    "/generate", "/chat-edit", "/match-roles", "/tailor-resume",
+    "/generate-portfolio", "/generate-cover-letter", "/generate-cv",
+    "/upload-linkedin", "/search-jobs", "/save-resume",
+}
+RL_MAX = int(os.getenv("RATE_LIMIT_MAX", "30"))      # requests
+RL_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
+
+
+@app.middleware("http")
+async def rate_limit_mw(request: Request, call_next):
+    if request.url.path in RL_PATHS:
+        ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        dq = _RL_HITS[ip]
+        while dq and dq[0] < now - RL_WINDOW:
+            dq.popleft()
+        if len(dq) >= RL_MAX:
+            return JSONResponse(
+                status_code=429,
+                content={"success": False,
+                         "error": "Too many requests. Please wait a moment and try again."},
+            )
+        dq.append(now)
+    return await call_next(request)
 
 
 class ResumeRequest(BaseModel):
@@ -233,7 +279,16 @@ def get_user_from_token(authorization):
 
     conn = get_db()
     try:
-        sess = db_one(conn, "SELECT email FROM sessions WHERE token = ?", (token,))
+        # Enforce a 30-day session lifetime using the DB's own clock so a
+        # leaked/stale token can't be used forever. created_at is set by the
+        # column default on insert (now() in PG, epoch seconds in SQLite).
+        if USE_PG:
+            sql = ("SELECT email FROM sessions "
+                   "WHERE token = ? AND created_at > now() - interval '30 days'")
+        else:
+            sql = ("SELECT email FROM sessions "
+                   "WHERE token = ? AND created_at > (strftime('%s','now') - 2592000)")
+        sess = db_one(conn, sql, (token,))
         if not sess:
             return None
         return db_one(conn, "SELECT * FROM users WHERE email = ?", (sess["email"],))
@@ -598,22 +653,32 @@ def save_resume(data: SaveResumeRequest):
 # ============================================================
 
 def render_html_to_pdf(html_content, basename):
-    html_file = f"{basename}.html"
-    pdf_file = f"{basename}.pdf"
+    # Unique suffix per call so concurrent users never overwrite each other's
+    # in-progress files (was a fixed name -> race condition / wrong PDF served).
+    uid = secrets.token_hex(8)
+    html_file = f"{basename}_{uid}.html"
+    pdf_file = f"{basename}_{uid}.pdf"
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page()
-        page.goto("file://" + os.path.abspath(html_file), wait_until="networkidle")
-        page.pdf(
-            path=pdf_file,
-            format="A4",
-            print_background=True,
-            prefer_css_page_size=True,
-            margin={"top": "0", "right": "0", "bottom": "0", "left": "0"}
-        )
-        browser.close()
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.goto("file://" + os.path.abspath(html_file), wait_until="networkidle")
+            page.pdf(
+                path=pdf_file,
+                format="A4",
+                print_background=True,
+                prefer_css_page_size=True,
+                margin={"top": "0", "right": "0", "bottom": "0", "left": "0"}
+            )
+            browser.close()
+    finally:
+        # The intermediate HTML is no longer needed once the PDF exists.
+        try:
+            os.remove(html_file)
+        except OSError:
+            pass
     return pdf_file
 
 
@@ -662,6 +727,18 @@ def _fill(tpl, ctx):
               "summary", "skills", "experience", "education"]:
         out = out.replace("__" + k.upper() + "__", ctx[k] or "")
     return out
+
+
+def _contact_or_default(name="", email="", phone="", location=""):
+    """Resolve contact fields from a request body, applying sensible
+    placeholders for any that are blank. Lets downloads carry per-request
+    data instead of relying on the shared latest_contact.txt file."""
+    return (
+        (name or "").strip() or "Candidate Name",
+        (email or "").strip() or "your.email@example.com",
+        (phone or "").strip() or "+91 XXXXX XXXXX",
+        (location or "").strip() or "Your City, India",
+    )
 
 
 TEMPLATE_SLATE = """<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
@@ -860,6 +937,43 @@ def download_template(template: str):
         media_type="application/pdf",
         filename=f"ResumeForge_{template}.pdf"
     )
+
+
+class ResumePDFRequest(BaseModel):
+    template: str = "classic"
+    resume: str = ""
+    name: str = ""
+    email: str = ""
+    phone: str = ""
+    location: str = ""
+    role: str = ""
+
+
+@app.post("/download-resume-pdf")
+def download_resume_pdf(data: ResumePDFRequest):
+    """Render a chosen template (or the 'professional' design) to a PDF using
+    the resume + contact carried IN THE REQUEST. This is the collision-safe
+    replacement for GET /download-template/{t} and /download-professional-pdf,
+    which both read the shared latest_resume.txt / latest_contact.txt files."""
+    resume = (data.resume or "").strip()
+    if not resume:
+        return {"success": False, "error": "No resume generated yet."}
+
+    name, email, phone, location = _contact_or_default(
+        data.name, data.email, data.phone, data.location)
+
+    if (data.template or "").lower() == "professional":
+        html_content = _build_professional_html(resume, name, email, phone, location)
+        filename = "ResumeForge_Professional_Template.pdf"
+    else:
+        tpl = TEMPLATES.get(data.template or "classic") or TEMPLATES["classic"]
+        ctx = _ctx_from_text(resume, name, email, phone, location)
+        html_content = _fill(tpl, ctx)
+        filename = (_professional_filename(name, data.role)
+                    if data.role else f"ResumeForge_{data.template}.pdf")
+
+    pdf_file = render_html_to_pdf(html_content, f"resume_{data.template or 'classic'}")
+    return FileResponse(pdf_file, media_type="application/pdf", filename=filename)
 
 
 # ============================================================
@@ -1360,6 +1474,9 @@ def download_tailored(template: str, role: str = ""):
 class RenderRequest(BaseModel):
     resume: str = ""
     name: str = ""
+    email: str = ""
+    phone: str = ""
+    location: str = ""
     role: str = ""
     template: str = "classic"
 
@@ -1374,11 +1491,11 @@ def render_resume(data: RenderRequest):
 
     tpl = TEMPLATES.get(data.template or "classic") or TEMPLATES.get("classic")
 
-    name = (data.name or "Candidate Name").strip()
-    email = "your.email@example.com"
-    phone = "+91 XXXXX XXXXX"
-    location = "Your City, India"
-    if os.path.exists("latest_contact.txt"):
+    # Contact comes from the request body (collision-safe). Falls back to the
+    # shared file only when the body omits everything (legacy callers).
+    name, email, phone, location = _contact_or_default(
+        data.name, data.email, data.phone, data.location)
+    if not (data.email or data.phone or data.location) and os.path.exists("latest_contact.txt"):
         with open("latest_contact.txt", "r", encoding="utf-8") as f:
             cl = f.read().splitlines()
         if len(cl) > 0 and cl[0]:
@@ -1482,6 +1599,9 @@ class CoverLetterRequest(BaseModel):
 class CoverLetterPDFRequest(BaseModel):
     cover_letter: str = ""
     name: str = ""
+    email: str = ""
+    phone: str = ""
+    location: str = ""
 
 
 class CVRequest(BaseModel):
@@ -1538,11 +1658,11 @@ def download_cover_letter(data: CoverLetterPDFRequest):
     if not text:
         return {"success": False, "error": "No cover letter to download."}
 
-    name = (data.name or "Candidate Name").strip()
-    email = "your.email@example.com"
-    phone = "+91 XXXXX XXXXX"
-    location = "Your City, India"
-    if os.path.exists("latest_contact.txt"):
+    # Contact from the request body (collision-safe); fall back to the shared
+    # file only if the caller sent no contact details at all.
+    name, email, phone, location = _contact_or_default(
+        data.name, data.email, data.phone, data.location)
+    if not (data.email or data.phone or data.location) and os.path.exists("latest_contact.txt"):
         with open("latest_contact.txt", "r", encoding="utf-8") as f:
             cl = f.read().splitlines()
         if len(cl) > 0 and cl[0]:
@@ -2302,40 +2422,7 @@ def format_bullets(text):
 
     return output
 
-@app.get("/download-professional-pdf")
-def download_professional_pdf():
-
-    if not os.path.exists("latest_resume.txt"):
-        return {
-            "success": False,
-            "error": "No resume generated yet."
-        }
-
-    with open("latest_resume.txt", "r", encoding="utf-8") as f:
-        resume_text = f.read()
-
-    candidate_name = "Candidate Name"
-    email = "your.email@example.com"
-    phone = "+91 XXXXX XXXXX"
-    location = "Your City, India"
-
-    if os.path.exists("latest_contact.txt"):
-
-        with open("latest_contact.txt", "r", encoding="utf-8") as f:
-            contact_lines = f.read().splitlines()
-
-    if len(contact_lines) > 0 and contact_lines[0]:
-        candidate_name = contact_lines[0]
-
-    if len(contact_lines) > 1 and contact_lines[1]:
-        email = contact_lines[1]
-
-    if len(contact_lines) > 2 and contact_lines[2]:
-        phone = contact_lines[2]
-
-    if len(contact_lines) > 3 and contact_lines[3]:
-        location = contact_lines[3]
-
+def _build_professional_html(resume_text, candidate_name, email, phone, location):
     sections = split_resume_sections(resume_text)
 
     summary = clean_text(sections["summary"])
@@ -2576,40 +2663,30 @@ li {{
     </html>
     """
 
-    html_file = "professional_resume.html"
-    pdf_file = "professional_resume.pdf"
+    return html_content
 
-    with open(html_file, "w", encoding="utf-8") as f:
-        f.write(html_content)
 
-    with sync_playwright() as p:
+@app.get("/download-professional-pdf")
+def download_professional_pdf():
+    """Back-compat GET that reads the shared latest_resume.txt / latest_contact.txt.
+    Prefer POST /download-resume-pdf with template='professional', which carries
+    the data in the request body and is therefore safe for concurrent users."""
+    if not os.path.exists("latest_resume.txt"):
+        return {"success": False, "error": "No resume generated yet."}
 
-        browser = p.chromium.launch()
+    with open("latest_resume.txt", "r", encoding="utf-8") as f:
+        resume_text = f.read()
 
-        page = browser.new_page()
+    name, email, phone, location = _contact_or_default()
+    if os.path.exists("latest_contact.txt"):
+        with open("latest_contact.txt", "r", encoding="utf-8") as f:
+            cl = f.read().splitlines()
+        name = cl[0] if len(cl) > 0 and cl[0] else name
+        email = cl[1] if len(cl) > 1 and cl[1] else email
+        phone = cl[2] if len(cl) > 2 and cl[2] else phone
+        location = cl[3] if len(cl) > 3 and cl[3] else location
 
-        page.goto(
-            "file://" + os.path.abspath(html_file),
-            wait_until="networkidle"
-        )
-
-        page.pdf(
-    path=pdf_file,
-    format="A4",
-    print_background=True,
-    prefer_css_page_size=True,
-    margin={
-        "top": "0",
-        "right": "0",
-        "bottom": "0",
-        "left": "0"
-    }
-)
-
-        browser.close()
-
-    return FileResponse(
-        pdf_file,
-        media_type="application/pdf",
-        filename="ResumeForge_Professional_Template.pdf"
-    )
+    html_content = _build_professional_html(resume_text, name, email, phone, location)
+    pdf_file = render_html_to_pdf(html_content, "professional_resume")
+    return FileResponse(pdf_file, media_type="application/pdf",
+                        filename="ResumeForge_Professional_Template.pdf")

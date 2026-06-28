@@ -2771,17 +2771,26 @@ document.addEventListener("click", function(e){
     }
 
 });
-document.addEventListener("click", function(e){
+// Build the contact payload from the in-memory resume + meta so downloads
+// carry their own data (no shared server-side file => safe for concurrent users).
+function _resumeContact() {
+    const m = window.__resumeMeta || {};
+    return {
+        name: ((window.__resumeText || "").split("\n")[0] || "").trim(),
+        email: m.email || "",
+        phone: m.phone || "",
+        location: m.location || ""
+    };
+}
 
-    if(e.target.id === "professionalPdfBtn"){
-
-        window.open(
-            `${API_BASE}/download-professional-pdf`,
-            "_blank"
-        );
-
-    }
-
+document.addEventListener("click", async function(e){
+    if(e.target.id !== "professionalPdfBtn") return;
+    if(!window.__resumeText){ alert("Generate a resume first."); return; }
+    try {
+        await _downloadBlobFrom("/download-resume-pdf",
+            Object.assign({ template: "professional", resume: window.__resumeText }, _resumeContact()),
+            "ResumeForge_Professional_Template.pdf");
+    } catch(err){ alert("Could not generate the PDF. Please try again."); }
 });
 
 // Open the Canva-style editor (Editor 1 = blocks, Editor 2 = canvas)
@@ -2799,16 +2808,22 @@ document.addEventListener("click", function (e) {
     }
 });
 
-// Template gallery — download the chosen template as a PDF
-document.addEventListener("click", function (e) {
+// Template gallery — download the chosen template as a PDF (POST carries the
+// resume + contact in the body, so concurrent users never collide).
+document.addEventListener("click", async function (e) {
     const card = e.target.closest(".tpl-card");
     if (!card) return;
     const t = card.getAttribute("data-template");
     if (!t) return;
-    const url = (t === "professional")
-        ? `${API_BASE}/download-professional-pdf`
-        : `${API_BASE}/download-template/${t}`;
-    window.open(url, "_blank");
+    if (!window.__resumeText) { alert("Generate a resume first."); return; }
+    const fname = (t === "professional")
+        ? "ResumeForge_Professional_Template.pdf"
+        : "ResumeForge_" + t + ".pdf";
+    try {
+        await _downloadBlobFrom("/download-resume-pdf",
+            Object.assign({ template: t, resume: window.__resumeText }, _resumeContact()),
+            fname);
+    } catch (err) { alert("Could not generate the PDF. Please try again."); }
 });
 
 // ===== Step 1: AI role matching =====
@@ -3015,7 +3030,7 @@ document.addEventListener("click", async function (e) {
         if (!window.__coverText) return;
         try {
             await _downloadBlobFrom("/download-cover-letter",
-                { cover_letter: window.__coverText, name: (window.__resumeText.split("\n")[0] || "").trim() },
+                Object.assign({ cover_letter: window.__coverText }, _resumeContact()),
                 _safeName("_Cover_Letter.pdf"));
         } catch (x) { alert("Could not download. Is the backend running?"); }
         return;
@@ -3070,7 +3085,7 @@ document.addEventListener("click", async function (e) {
         if (!window.__cvText) return;
         try {
             await _downloadBlobFrom("/render-resume",
-                { resume: window.__cvText, name: (window.__resumeText.split("\n")[0] || "").trim(), role: "", template: "classic" },
+                Object.assign({ resume: window.__cvText, role: "", template: "classic" }, _resumeContact()),
                 _safeName("_CV.pdf"));
         } catch (x) { alert("Could not download. Is the backend running?"); }
         return;
@@ -3337,7 +3352,7 @@ async function _downloadApp(app, template) {
         const res = await fetch(`${API_BASE}/render-resume`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ resume: app.tailored_resume, name: _appName(), role: app.role || "", template: template })
+            body: JSON.stringify(Object.assign({ resume: app.tailored_resume, role: app.role || "", template: template }, _resumeContact()))
         });
         if (!res.ok) throw new Error("render failed");
         const blob = await res.blob();
