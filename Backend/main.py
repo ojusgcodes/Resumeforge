@@ -78,14 +78,54 @@ from fastapi import Header
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db")
 
+# Use Postgres (Supabase) when DATABASE_URL is set, else local SQLite.
+DATABASE_URL = os.getenv("DATABASE_URL")
+USE_PG = bool(DATABASE_URL)
+
+if USE_PG:
+    import psycopg2
+    import psycopg2.extras
+
 
 def get_db():
+    if USE_PG:
+        return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
+def _q(sql):
+    # Our SQL is written with '?' placeholders (SQLite). Postgres needs '%s'.
+    return sql.replace("?", "%s") if USE_PG else sql
+
+
+def db_one(conn, sql, params=()):
+    cur = conn.cursor()
+    cur.execute(_q(sql), params)
+    row = cur.fetchone()
+    cur.close()
+    return row
+
+
+def db_all(conn, sql, params=()):
+    cur = conn.cursor()
+    cur.execute(_q(sql), params)
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+
+
+def db_exec(conn, sql, params=()):
+    cur = conn.cursor()
+    cur.execute(_q(sql), params)
+    cur.close()
+
+
 def init_db():
+    # On Postgres the tables are created by Backend/schema.sql — nothing to do here.
+    if USE_PG:
+        return
     conn = get_db()
     conn.execute(
         """
@@ -95,7 +135,7 @@ def init_db():
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             salt TEXT NOT NULL,
-            created_at REAL NOT NULL
+            created_at REAL NOT NULL DEFAULT (strftime('%s','now'))
         )
         """
     )
@@ -104,7 +144,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS sessions (
             token TEXT PRIMARY KEY,
             email TEXT NOT NULL,
-            created_at REAL NOT NULL
+            created_at REAL NOT NULL DEFAULT (strftime('%s','now'))
         )
         """
     )
@@ -155,21 +195,13 @@ def get_user_from_token(authorization):
         return None
 
     conn = get_db()
-    sess = conn.execute(
-        "SELECT email FROM sessions WHERE token = ?",
-        (token,)
-    ).fetchone()
-
-    if not sess:
+    try:
+        sess = db_one(conn, "SELECT email FROM sessions WHERE token = ?", (token,))
+        if not sess:
+            return None
+        return db_one(conn, "SELECT * FROM users WHERE email = ?", (sess["email"],))
+    finally:
         conn.close()
-        return None
-
-    user = conn.execute(
-        "SELECT * FROM users WHERE email = ?",
-        (sess["email"],)
-    ).fetchone()
-    conn.close()
-    return user
 
 
 @app.post("/signup")
@@ -185,30 +217,22 @@ def signup(data: SignupRequest):
         return {"success": False, "error": "Password must be at least 6 characters."}
 
     conn = get_db()
-    existing = conn.execute(
-        "SELECT id FROM users WHERE email = ?",
-        (email,)
-    ).fetchone()
+    try:
+        existing = db_one(conn, "SELECT id FROM users WHERE email = ?", (email,))
+        if existing:
+            return {"success": False, "error": "An account with this email already exists."}
 
-    if existing:
+        salt = secrets.token_hex(16)
+        pwd_hash = hash_password(password, salt)
+
+        db_exec(conn, "INSERT INTO users (name, email, password_hash, salt) VALUES (?, ?, ?, ?)",
+                (name, email, pwd_hash, salt))
+
+        token = secrets.token_hex(32)
+        db_exec(conn, "INSERT INTO sessions (token, email) VALUES (?, ?)", (token, email))
+        conn.commit()
+    finally:
         conn.close()
-        return {"success": False, "error": "An account with this email already exists."}
-
-    salt = secrets.token_hex(16)
-    pwd_hash = hash_password(password, salt)
-
-    conn.execute(
-        "INSERT INTO users (name, email, password_hash, salt, created_at) VALUES (?, ?, ?, ?, ?)",
-        (name, email, pwd_hash, salt, time.time())
-    )
-
-    token = secrets.token_hex(32)
-    conn.execute(
-        "INSERT INTO sessions (token, email, created_at) VALUES (?, ?, ?)",
-        (token, email, time.time())
-    )
-    conn.commit()
-    conn.close()
 
     return {"success": True, "token": token, "name": name, "email": email}
 
@@ -219,31 +243,22 @@ def login(data: LoginRequest):
     password = data.password or ""
 
     conn = get_db()
-    user = conn.execute(
-        "SELECT * FROM users WHERE email = ?",
-        (email,)
-    ).fetchone()
+    try:
+        user = db_one(conn, "SELECT * FROM users WHERE email = ?", (email,))
+        if not user:
+            return {"success": False, "error": "Invalid email or password."}
 
-    if not user:
+        if not hmac.compare_digest(user["password_hash"], hash_password(password, user["salt"])):
+            return {"success": False, "error": "Invalid email or password."}
+
+        token = secrets.token_hex(32)
+        db_exec(conn, "INSERT INTO sessions (token, email) VALUES (?, ?)", (token, email))
+        conn.commit()
+        name = user["name"]
+    finally:
         conn.close()
-        return {"success": False, "error": "Invalid email or password."}
 
-    expected = user["password_hash"]
-    actual = hash_password(password, user["salt"])
-
-    if not hmac.compare_digest(expected, actual):
-        conn.close()
-        return {"success": False, "error": "Invalid email or password."}
-
-    token = secrets.token_hex(32)
-    conn.execute(
-        "INSERT INTO sessions (token, email, created_at) VALUES (?, ?, ?)",
-        (token, email, time.time())
-    )
-    conn.commit()
-    conn.close()
-
-    return {"success": True, "token": token, "name": user["name"], "email": email}
+    return {"success": True, "token": token, "name": name, "email": email}
 
 
 @app.get("/me")
@@ -261,9 +276,11 @@ def logout(authorization: Optional[str] = Header(None)):
         token = parts[1].strip() if len(parts) == 2 else authorization.strip()
         if token:
             conn = get_db()
-            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
-            conn.commit()
-            conn.close()
+            try:
+                db_exec(conn, "DELETE FROM sessions WHERE token = ?", (token,))
+                conn.commit()
+            finally:
+                conn.close()
     return {"success": True}
 
 
@@ -1152,6 +1169,221 @@ def render_resume(data: RenderRequest):
         media_type="application/pdf",
         filename=_professional_filename(name, data.role)
     )
+
+
+# ============================================================
+# PORTFOLIO WEBSITE GENERATOR
+# ============================================================
+
+class PortfolioRequest(BaseModel):
+    resume: str = ""
+    name: str = ""
+    email: str = ""
+    github: str = ""
+    linkedin: str = ""
+    github_skills: str = ""
+
+
+def _strip_code_fences(text):
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```[a-zA-Z]*\s*\n", "", t)
+        t = re.sub(r"\n```\s*$", "", t)
+    return t.strip()
+
+
+@app.post("/generate-portfolio")
+def generate_portfolio(data: PortfolioRequest):
+    resume = (data.resume or "").strip()
+    if not resume:
+        return {"success": False, "error": "Generate a resume first."}
+
+    prompt = f"""
+Create a complete, modern, single-file personal PORTFOLIO WEBSITE for the candidate below.
+
+CANDIDATE RESUME:
+{resume}
+
+NAME: {data.name or "the candidate"}
+EMAIL: {data.email or "N/A"}
+GITHUB: {data.github or "N/A"}
+LINKEDIN: {data.linkedin or "N/A"}
+GITHUB SKILLS: {data.github_skills or "N/A"}
+
+Requirements:
+- Return ONE complete HTML file with all CSS and JS inline (no external files except Google Fonts).
+- Modern, clean, professional design. Tasteful colors, good typography, smooth subtle animations.
+- Fully responsive (looks great on mobile and desktop).
+- Sections: a hero (name + headline/title + short tagline + call-to-action buttons),
+  About, Skills (as tags/chips), Projects (built from the candidate's projects/GitHub —
+  give each a title, short description, and tech used), Experience (timeline), and a Contact
+  section with the email and links to GitHub/LinkedIn.
+- Use only REAL information from the resume. Do not invent fake projects, employers, or metrics.
+- Include a sticky navbar with smooth-scroll links to the sections.
+- Self-contained, valid HTML that renders correctly when opened directly in a browser.
+
+Return ONLY the HTML document — no markdown fences, no commentary.
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        html_out = _strip_code_fences(response.text or "")
+    except Exception as e:
+        print("Portfolio error:", str(e))
+        return {"success": False, "error": "The portfolio generator is unavailable right now. Please try again."}
+
+    if not html_out or "<" not in html_out:
+        return {"success": False, "error": "Could not generate the portfolio. Please try again."}
+
+    return {"success": True, "html": html_out}
+
+
+# ============================================================
+# COVER LETTER + FULL CV GENERATORS
+# ============================================================
+
+class CoverLetterRequest(BaseModel):
+    resume: str = ""
+    name: str = ""
+    company: str = ""
+    role: str = ""
+
+
+class CoverLetterPDFRequest(BaseModel):
+    cover_letter: str = ""
+    name: str = ""
+
+
+class CVRequest(BaseModel):
+    resume: str = ""
+    linkedin_data: str = ""
+    github_skills: str = ""
+    name: str = ""
+
+
+@app.post("/generate-cover-letter")
+def generate_cover_letter(data: CoverLetterRequest):
+    resume = (data.resume or "").strip()
+    if not resume:
+        return {"success": False, "error": "Generate a resume first."}
+
+    target = ""
+    if data.role:
+        target += f"Target role: {data.role}. "
+    if data.company:
+        target += f"Target company: {data.company}."
+
+    prompt = f"""
+Write a professional, warm, and specific COVER LETTER for the candidate below, based on their resume.
+
+CANDIDATE RESUME:
+{resume}
+
+{target or "No specific company/role given — keep it strong but general."}
+
+Rules:
+- 3 to 4 short paragraphs: an engaging opening, 1-2 paragraphs on relevant strengths/projects
+  drawn from the resume, and a confident closing.
+- If a company/role is given, tailor the letter to it; otherwise keep it role-appropriate and general.
+- Use ONLY real information from the resume. Do not invent achievements, employers, or metrics.
+- Return ONLY the letter body (greeting, paragraphs, and sign-off). Do NOT include a mailing
+  address block, date, or markdown.
+"""
+    try:
+        response = model.generate_content(prompt)
+        letter = clean_resume_markdown(response.text or "")
+    except Exception as e:
+        print("Cover letter error:", str(e))
+        return {"success": False, "error": "The cover letter generator is unavailable right now. Please try again."}
+
+    if not letter:
+        return {"success": False, "error": "Could not generate the cover letter. Please try again."}
+
+    return {"success": True, "cover_letter": letter}
+
+
+@app.post("/download-cover-letter")
+def download_cover_letter(data: CoverLetterPDFRequest):
+    text = (data.cover_letter or "").strip()
+    if not text:
+        return {"success": False, "error": "No cover letter to download."}
+
+    name = (data.name or "Candidate Name").strip()
+    email = "your.email@example.com"
+    phone = "+91 XXXXX XXXXX"
+    location = "Your City, India"
+    if os.path.exists("latest_contact.txt"):
+        with open("latest_contact.txt", "r", encoding="utf-8") as f:
+            cl = f.read().splitlines()
+        if len(cl) > 0 and cl[0]:
+            name = cl[0]
+        if len(cl) > 1 and cl[1]:
+            email = cl[1]
+        if len(cl) > 2 and cl[2]:
+            phone = cl[2]
+        if len(cl) > 3 and cl[3]:
+            location = cl[3]
+
+    body = html.escape(text)
+    html_content = f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+@page {{ size: A4; margin: 22mm; }}
+* {{ box-sizing: border-box; }}
+body {{ font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; font-size: 12px; line-height: 1.75; }}
+.name {{ font-size: 23px; font-weight: 700; margin-bottom: 2px; }}
+.contact {{ font-size: 11px; color: #555; margin-bottom: 26px; border-bottom: 1px solid #ccc; padding-bottom: 14px; }}
+.body {{ white-space: pre-wrap; }}
+</style></head><body>
+<div class="name">{html.escape(name)}</div>
+<div class="contact">{html.escape(email)} &nbsp;·&nbsp; {html.escape(phone)} &nbsp;·&nbsp; {html.escape(location)}</div>
+<div class="body">{body}</div>
+</body></html>"""
+
+    pdf_file = render_html_to_pdf(html_content, "cover_letter")
+    return FileResponse(pdf_file, media_type="application/pdf", filename="Cover_Letter.pdf")
+
+
+@app.post("/generate-cv")
+def generate_cv(data: CVRequest):
+    base = (data.resume or "").strip()
+    profile = (data.linkedin_data or "").strip()
+    if not base and not profile:
+        return {"success": False, "error": "Generate a resume first."}
+
+    prompt = f"""
+Create a comprehensive professional CV (more detailed and complete than a one-page resume)
+for the candidate, using all the information below.
+
+RESUME:
+{base}
+
+LINKEDIN PROFILE INFO:
+{profile or "N/A"}
+
+GITHUB SKILLS: {data.github_skills or "N/A"}
+
+Use these EXACT section headings (so it formats correctly):
+PROFESSIONAL SUMMARY:
+TECHNICAL SKILLS:
+EXPERIENCE:
+PROJECTS:
+EDUCATION:
+
+Rules:
+- Be thorough — include full detail on experience, projects, and skills (a CV is longer than a resume).
+- Use ONLY real information from the inputs. Do not invent jobs, employers, dates, or metrics.
+- Return ONLY the CV text in the headings above. No markdown, no commentary.
+"""
+    try:
+        response = model.generate_content(prompt)
+        cv = clean_resume_markdown(response.text or "")
+    except Exception as e:
+        print("CV error:", str(e))
+        return {"success": False, "error": "The CV generator is unavailable right now. Please try again."}
+
+    if not cv:
+        return {"success": False, "error": "Could not generate the CV. Please try again."}
+
+    return {"success": True, "cv": cv}
 
 
 @app.post("/generate")

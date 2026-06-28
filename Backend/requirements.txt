@@ -7,3 +7,4 @@ reportlab
 playwright
 pypdf
 requests
+psycopg2-binary
