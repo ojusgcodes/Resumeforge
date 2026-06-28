@@ -2,18 +2,22 @@
 // Centralizes all backend calls (cross-origin is allowed here via
 // host_permissions) and stores the token / API base / job queue.
 
-const DEFAULT_API_BASE = "http://127.0.0.1:8000";
+// Sensible default so the extension works out of the box; the live site also
+// pushes its real backend URL automatically (see syncSite), so users never
+// have to type it.
+const DEFAULT_API_BASE = "https://resumeforge-backend-1bu3.onrender.com";
 
 async function getState() {
   const s = await chrome.storage.local.get([
-    "rf_api_base", "rf_token", "rf_email", "rf_queue", "rf_active_job"
+    "rf_api_base", "rf_token", "rf_email", "rf_queue", "rf_active_job", "rf_site_url"
   ]);
   return {
     apiBase: (s.rf_api_base || DEFAULT_API_BASE).replace(/\/+$/, ""),
     token: s.rf_token || "",
     email: s.rf_email || "",
     queue: s.rf_queue || [],
-    activeJob: s.rf_active_job || null
+    activeJob: s.rf_active_job || null,
+    siteUrl: s.rf_site_url || ""
   };
 }
 
@@ -62,11 +66,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       } else if (msg.type === "syncSite") {
         // Called by the content script when it finds ResumeForge data in the
-        // page's localStorage (token / resume / queue). Only overwrites when
-        // a value is actually present.
+        // page's localStorage (backend URL / token / email / queue). Only
+        // overwrites when a value is actually present.
         const patch = {};
+        if (msg.apiBase) patch.rf_api_base = (msg.apiBase || "").replace(/\/+$/, "");
         if (msg.token) patch.rf_token = msg.token;
         if (msg.email) patch.rf_email = msg.email;
+        if (msg.siteUrl) patch.rf_site_url = msg.siteUrl;
         if (Array.isArray(msg.queue)) patch.rf_queue = msg.queue;
         if (Object.keys(patch).length) await chrome.storage.local.set(patch);
         sendResponse({ ok: true });

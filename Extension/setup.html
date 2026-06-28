@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set up ResumeForge Auto-Apply</title>
+<style>
+  :root { --green:#2e9e5b; --ink:#2b2b2b; --muted:#7a736c; --line:#e7e1da; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.6 -apple-system,"Segoe UI",Roboto,Arial,sans-serif; color:var(--ink); background:#faf8f5; }
+  .top { background:#3f4a56; color:#fff; padding:26px 20px; text-align:center; }
+  .top h1 { margin:0 0 4px; font-size:24px; }
+  .top p { margin:0; opacity:.85; font-size:14px; }
+  .wrap { max-width:620px; margin:0 auto; padding:24px 20px 60px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px 22px; margin-bottom:16px; box-shadow:0 2px 10px rgba(0,0,0,.03); }
+  .step { display:flex; gap:14px; }
+  .badge { flex:0 0 32px; height:32px; border-radius:50%; background:var(--green); color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .step h3 { margin:3px 0 6px; font-size:17px; }
+  .step p { margin:0 0 6px; color:#3c3733; }
+  .hint { font-size:13px; color:var(--muted); }
+  kbd { background:#f1ede8; border:1px solid #ddd5cd; border-radius:5px; padding:1px 6px; font-size:13px; }
+  .pill { display:inline-block; background:#e7f6ec; color:#1f8a4c; border-radius:999px; padding:3px 11px; font-size:13px; font-weight:600; }
+  .big { font-size:15px; }
+  .ok { color:var(--green); font-weight:700; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>⚡ ResumeForge Auto-Apply</h1>
+    <p>Two quick steps. After that, applying is just a couple of clicks per job.</p>
+  </div>
+  <div class="wrap">
+
+    <div class="card">
+      <div class="step">
+        <div class="badge">1</div>
+        <div>
+          <h3>Add the extension to Chrome</h3>
+          <p>Open <kbd>chrome://extensions</kbd> → turn on <b>Developer mode</b> (top-right) →
+             click <b>Load unpacked</b> → pick this <b>Extension</b> folder.</p>
+          <p class="hint">Then click the puzzle-piece icon in Chrome's toolbar and pin
+             <b>ResumeForge Auto-Apply</b> so it's always one click away.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="step">
+        <div class="badge">2</div>
+        <div>
+          <h3>Open ResumeForge and log in</h3>
+          <p class="big">That's the whole connection step. 🎉</p>
+          <p>The moment you're signed in to ResumeForge in a tab, the extension
+             grabs your account automatically — <b>no URLs, passwords, or codes to copy.</b></p>
+          <p class="hint">You'll see <span class="pill">✅ Connected as you</span> when you open the extension popup.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">✅ That's it — here's how applying works</h3>
+      <p class="big" style="margin-bottom:4px">On ResumeForge:</p>
+      <p>Pick jobs → let it write a tailored resume for each → click <b>Apply &amp; Track</b>.
+         Each job (with its own resume) joins your <b>Auto-Apply Queue</b>.</p>
+      <p class="big" style="margin:14px 0 4px">On the job page:</p>
+      <p>A small panel appears bottom-right. Click <b>⚡ Fill this form</b>. Green fields are
+         done; <b style="color:#b8860b">yellow</b> ones (salary, work authorization, custom
+         questions) need a quick look. Fix those, then click the site's own <b>Submit</b>.</p>
+      <p class="hint">You always click Submit yourself — the extension never sends an application for you.</p>
+    </div>
+
+    <p style="text-align:center;color:var(--muted);font-size:13px">
+      Stuck? You can also connect manually inside the extension popup under “Set it up manually”.
+    </p>
+  </div>
+</body>
+</html>

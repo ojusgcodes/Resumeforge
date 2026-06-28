@@ -10,15 +10,24 @@
   if (window.top !== window && !document.querySelector("input,textarea,select")) return;
 
   // ---- (A) Sync ResumeForge site data ------------------------------------
+  // If this page is ResumeForge, copy its backend URL + login + queue into the
+  // extension automatically, and drop a marker so the site can show
+  // "extension connected". This is what makes setup a one-step thing: the user
+  // just opens ResumeForge while logged in and everything connects itself.
   try {
+    const apiBase = localStorage.getItem("rf_api_base");
     const token = localStorage.getItem("rf_token");
-    if (token) {
+    if (apiBase || token) {
+      // Let the site detect that the extension is installed.
+      document.documentElement.setAttribute("data-rf-ext", "1");
       let queue = [];
       try { queue = JSON.parse(localStorage.getItem("rf_autoapply_queue") || "[]"); } catch (e) {}
       chrome.runtime.sendMessage({
         type: "syncSite",
-        token: token,
+        apiBase: apiBase || "",
+        token: token || "",
         email: localStorage.getItem("rf_email") || "",
+        siteUrl: location.origin,
         queue: Array.isArray(queue) ? queue : []
       });
     }
@@ -145,6 +154,30 @@
 
   function msg(o) { return new Promise(res => chrome.runtime.sendMessage(o, res)); }
 
+  function _normUrl(u) {
+    try {
+      const a = document.createElement("a");
+      a.href = u;
+      return (a.host + a.pathname).toLowerCase().replace(/\/+$/, "");
+    } catch (e) { return (u || "").toLowerCase(); }
+  }
+
+  // Find the queued job (set on the ResumeForge site) that matches this page,
+  // so we attach the resume tailored for THIS exact posting.
+  function matchQueuedJob(queue) {
+    if (!queue || !queue.length) return null;
+    const here = _normUrl(location.href);
+    let best = null;
+    for (const j of queue) {
+      if (!j.url) continue;
+      const n = _normUrl(j.url);
+      if (!n) continue;
+      if (n === here) return j;
+      if (here.startsWith(n) || n.startsWith(here)) best = best || j;
+    }
+    return best;
+  }
+
   // ---- the fill routine ---------------------------------------------------
   async function runFill(statusEl) {
     statusEl.textContent = "Reading the form…";
@@ -169,7 +202,10 @@
     let pdfFile = null;
     if (plan.some(p => p.is_file && p.role === "resume_file")) {
       statusEl.textContent = "Preparing your resume PDF…";
-      const job = state.activeJob || {};
+      // Pick the job for THIS page: the active job if set, otherwise the
+      // queued job whose URL matches the page we're on (so each application
+      // uses its own tailored resume).
+      let job = state.activeJob || matchQueuedJob(state.queue || []) || {};
       let resumeText = job.tailored_resume || "";
       if (!resumeText) {
         const lr = await msg({ type: "latestResume" });
@@ -231,7 +267,7 @@
     panel.querySelector("#rf-fill").onclick = () => runFill(status).catch(e => status.textContent = "Error: " + e.message);
     panel.querySelector("#rf-applied").onclick = async () => {
       const st = await msg({ type: "getState" });
-      const job = (st && st.activeJob) || {};
+      const job = (st && st.activeJob) || matchQueuedJob((st && st.queue) || []) || {};
       const r = await msg({
         type: "logApplication",
         company: job.company || document.title.split("|")[0].trim(),

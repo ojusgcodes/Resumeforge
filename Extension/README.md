@@ -26,14 +26,17 @@ you in control, avoids bot-detection, and stays within job sites' terms.
 3. Click **Load unpacked** and select this `Extension` folder.
 4. Pin the extension so its icon is visible.
 
-## First-time setup
+## First-time setup (2 steps)
 
-Open the extension popup and either:
+1. **Add it to Chrome** (the install above).
+2. **Open ResumeForge and log in.** That's the whole connection step — the
+   extension automatically picks up your backend URL, login, and apply queue
+   from the site. No URLs or passwords to copy.
 
-- **Log in** with your ResumeForge email + password and set the **Backend URL**
-  (e.g. `https://your-app.onrender.com`, or `http://127.0.0.1:8000` for local), **or**
-- Just open ResumeForge in a tab while signed in — the extension copies your
-  login token automatically the next time that tab loads.
+Open the popup and you'll see **✅ Connected as you**. (There's also a "Set it
+up manually" option in the popup if you ever need to enter the URL/login by
+hand.) A friendlier visual version of these steps is in **`setup.html`** —
+open it in a browser.
 
 ## How it stays cheap and accurate
 

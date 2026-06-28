@@ -2428,6 +2428,10 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
                 ? "http://localhost:8000"
                 : "https://resumeforge-backend-1bu3.onrender.com";
 
+        // Publish the backend URL so the Auto-Apply extension can pick it up
+        // automatically — the user never has to type it.
+        try { localStorage.setItem("rf_api_base", API_BASE); } catch (e) {}
+
         document.getElementById("generateBtn")
             .addEventListener("click", async () => {
                 const btn = document.getElementById("generateBtn");
@@ -2681,9 +2685,11 @@ document.getElementById("result").innerHTML = `
                 </select>
             </label>
             <button id="genAppsBtn" class="pdf-btn">✨ Generate tailored resumes</button>
+            <button id="viewQueueBtn" class="pdf-btn">🚀 Auto-Apply Queue (0)</button>
             <button id="openTrackerBtn" class="pdf-btn">📋 My Applications</button>
         </div>
         <div id="appsResults"><p class="apps-hint">👆 First, select the jobs you want to apply to in “Find Job Openings” above — tick them and click <b>“Save selected jobs.”</b> Then I'll write a unique resume for each, and you can apply &amp; track them.</p></div>
+        <div id="autoApplyQueue" style="display:none;"></div>
     </div>
 
     <div class="preview-banner fade-in">
@@ -3449,6 +3455,78 @@ async function addTrackedApp(o) {
     }
 }
 
+// ===== Auto-Apply queue (handoff to the Chrome extension) =====
+// The extension reads localStorage "rf_autoapply_queue" on the ResumeForge
+// tab. Each Apply pushes the job + its tailored resume so the extension can
+// attach the RIGHT resume for that exact posting.
+function getAutoQueue() {
+    try { return JSON.parse(localStorage.getItem("rf_autoapply_queue") || "[]"); } catch (e) { return []; }
+}
+function setAutoQueue(q) {
+    try { localStorage.setItem("rf_autoapply_queue", JSON.stringify(q || [])); } catch (e) {}
+}
+function pushAutoQueue(item) {
+    const q = getAutoQueue();
+    const idx = q.findIndex(x => (x.url || "") && x.url === item.url);
+    if (idx >= 0) q[idx] = item; else q.unshift(item);
+    setAutoQueue(q);
+    renderAutoQueue();
+}
+function removeAutoQueue(url) {
+    setAutoQueue(getAutoQueue().filter(x => x.url !== url));
+    renderAutoQueue();
+}
+function updateQueueCount() {
+    const b = document.getElementById("viewQueueBtn");
+    if (b) b.textContent = `🚀 Auto-Apply Queue (${getAutoQueue().length})`;
+}
+document.addEventListener("DOMContentLoaded", function () { try { updateQueueCount(); } catch (e) {} });
+function renderAutoQueue() {
+    updateQueueCount();
+    const box = document.getElementById("autoApplyQueue");
+    if (!box || box.style.display === "none") return;
+    const extOn = document.documentElement.getAttribute("data-rf-ext") === "1";
+    const extLine = extOn
+        ? `<div class="rh-meta" style="margin-bottom:8px">🧩 <b style="color:#1f8a4c">Auto-Apply extension connected ✓</b></div>`
+        : `<div class="rh-meta" style="margin-bottom:8px">🧩 Extension not detected yet — <a href="#" id="qExtHelp">how to install it</a>. Without it you can still open each job and apply manually.</div>`;
+    const q = getAutoQueue();
+    if (!q.length) {
+        box.innerHTML = extLine + `<div class="rh-empty">Your auto-apply queue is empty. Click <b>“✅ Apply &amp; Track”</b> on a tailored job above to add it here.</div>`;
+        return;
+    }
+    let h = extLine + `<div class="rh-group-title">🚀 Queued for auto-apply — open each in Chrome and click “Fill this form”</div>`;
+    q.forEach(j => {
+        const hasR = j.tailored_resume ? `<span class="rh-badge tailored">tailored resume ✓</span>` : `<span class="rh-badge base">latest resume</span>`;
+        h += `<div class="rh-card">
+            <div class="rh-top"><span class="rh-title">${_esc(j.role || "Role")} — ${_esc(j.company || "")}</span>${hasR}</div>
+            <div class="rh-actions">
+                ${j.url ? `<button class="q-open primary" data-url="${_esc(j.url)}">↗ Open job page</button>` : ""}
+                <button class="q-del" data-url="${_esc(j.url || "")}">🗑 Remove</button>
+            </div>
+        </div>`;
+    });
+    box.innerHTML = h;
+}
+
+document.addEventListener("click", function (e) {
+    if (e.target.id === "viewQueueBtn") {
+        const box = document.getElementById("autoApplyQueue");
+        if (!box) return;
+        box.style.display = (box.style.display === "none") ? "block" : "none";
+        renderAutoQueue();
+        return;
+    }
+    const qo = e.target.closest(".q-open");
+    if (qo) { const u = qo.getAttribute("data-url"); if (u) window.open(u, "_blank"); return; }
+    const qd = e.target.closest(".q-del");
+    if (qd) { removeAutoQueue(qd.getAttribute("data-url")); return; }
+    if (e.target.id === "qExtHelp") {
+        e.preventDefault();
+        alert("Set up Auto-Apply in 2 steps:\n\n1) Open chrome://extensions → turn on Developer mode → Load unpacked → pick the 'Extension' folder.\n\n2) Come back here while logged in — the extension connects to your account automatically.\n\nThen open any job posting and click '⚡ Fill this form'.");
+        return;
+    }
+});
+
 // Apply & Track from a tailored job card
 document.addEventListener("click", function (e) {
     const b = e.target.closest(".app-apply");
@@ -3457,9 +3535,17 @@ document.addEventListener("click", function (e) {
     const app = (window.__applications || [])[i];
     if (!app) return;
     const job = app.job || {};
+    // Hand the job + its tailored resume to the extension's queue.
+    pushAutoQueue({
+        company: job.company || "",
+        role: app.role || job.title || "",
+        url: job.url || "",
+        name: ((window.__resumeText || "").split("\n")[0] || "").trim(),
+        tailored_resume: app.tailored_resume || ""
+    });
     if (job.url) window.open(job.url, "_blank");
     addTrackedApp({ company: job.company || "", role: app.role || job.title || "", url: job.url || "" });
-    b.textContent = job.url ? "✅ Opened & tracked" : "✅ Tracked (search the posting)";
+    b.textContent = job.url ? "✅ Queued, opened & tracked" : "✅ Queued & tracked";
     setTimeout(() => { b.innerHTML = "✅ Apply &amp; Track"; }, 2600);
 });
 
