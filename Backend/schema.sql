@@ -66,7 +66,21 @@ create table if not exists profile_vault (
     updated_at         timestamptz default now()
 );
 
+-- Cached form->role maps for the auto-apply autofill engine.
+-- Stores ONLY the generic field->role mapping for a given form layout
+-- (never any user's personal values), so the AI solves each unique form
+-- template once and every later user reuses it for free.
+create table if not exists form_maps (
+    id         bigserial primary key,
+    ats        text not null,
+    signature  text not null,
+    field_map  text not null,   -- JSON: { "<field key>": "<role>" }
+    created_at timestamptz not null default now(),
+    unique (ats, signature)
+);
+
 -- Helpful indexes
 create index if not exists idx_resumes_user  on resumes(user_id);
 create index if not exists idx_apps_user     on applications(user_id);
 create index if not exists idx_sessions_email on sessions(email);
+create index if not exists idx_formmaps_sig  on form_maps(ats, signature);

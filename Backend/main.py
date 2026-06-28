@@ -75,7 +75,7 @@ _RL_HITS = defaultdict(deque)
 RL_PATHS = {
     "/generate", "/chat-edit", "/match-roles", "/tailor-resume",
     "/generate-portfolio", "/generate-cover-letter", "/generate-cv",
-    "/upload-linkedin", "/search-jobs", "/save-resume",
+    "/upload-linkedin", "/search-jobs", "/save-resume", "/autofill-plan",
 }
 RL_MAX = int(os.getenv("RATE_LIMIT_MAX", "30"))      # requests
 RL_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
@@ -228,6 +228,18 @@ def init_db():
             linkedin_url TEXT, github_url TEXT, portfolio_url TEXT,
             education TEXT, experience TEXT, skills TEXT, work_authorization TEXT,
             updated_at REAL DEFAULT (strftime('%s','now'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS form_maps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ats TEXT NOT NULL,
+            signature TEXT NOT NULL,
+            field_map TEXT NOT NULL,
+            created_at REAL NOT NULL DEFAULT (strftime('%s','now')),
+            UNIQUE (ats, signature)
         )
         """
     )
@@ -567,6 +579,382 @@ def save_vault(data: VaultRequest, authorization: Optional[str] = Header(None)):
     finally:
         conn.close()
     return {"success": True}
+
+
+# ============================================================
+# AUTO-APPLY  —  AI FORM AUTOFILL ENGINE
+# Four layers, used in order, so we can fill (almost) any form:
+#   1. ATS hints      — hand-tuned name/label rules per platform
+#   2. Generic rules  — universal label/name matching (no LLM, free)
+#   3. Cache          — form->role map solved once per layout, reused
+#   4. AI (Gemini)    — semantic mapping for anything still unknown
+# The extension then fills the page, highlights low-confidence / sensitive
+# fields for review, and the human clicks Submit.
+# ============================================================
+
+# The fixed vocabulary of "roles" a field can map to. Everything the engine
+# fills resolves to one of these; "resume_file"/"cover_letter_file" tell the
+# extension to attach a generated file rather than type a value.
+VAULT_ROLES = {
+    "full_name", "first_name", "last_name", "email", "phone", "location",
+    "linkedin_url", "github_url", "portfolio_url", "website",
+    "resume_file", "cover_letter_file",
+    "work_authorization", "requires_sponsorship", "years_experience",
+    "current_company", "current_title", "education_school", "education_degree",
+    "skills", "summary", "salary_expectation", "how_did_you_hear",
+    "gender", "race_ethnicity", "veteran_status", "disability_status",
+}
+
+# Roles we NEVER auto-commit silently — always surfaced for the user to confirm,
+# whatever the confidence (legally / personally sensitive, or easy to get wrong).
+SENSITIVE_ROLES = {
+    "work_authorization", "requires_sponsorship", "salary_expectation",
+    "gender", "race_ethnicity", "veteran_status", "disability_status",
+}
+
+# Layer 2 — generic label/name matching. Tried for every field.
+GENERIC_RULES = [
+    (r"first[\s_-]*name", "first_name"),
+    (r"last[\s_-]*name|surname|family[\s_-]*name", "last_name"),
+    (r"full[\s_-]*name|legal[\s_-]*name|^name$|your[\s_-]*name|candidate[\s_-]*name", "full_name"),
+    (r"e[-\s]?mail", "email"),
+    (r"phone|mobile|telephone|contact[\s_-]*number", "phone"),
+    (r"linked[\s_-]?in", "linkedin_url"),
+    (r"git[\s_-]?hub", "github_url"),
+    (r"portfolio|personal[\s_-]*(web)?site|your[\s_-]*website", "portfolio_url"),
+    (r"\bwebsite\b|\bweb[\s_-]*site\b|\burl\b", "website"),
+    (r"\bcity\b|location|where.*(based|located)|current[\s_-]*location|address", "location"),
+    (r"cover[\s_-]*letter", "cover_letter_file"),
+    (r"resume|\bcv\b|curriculum", "resume_file"),
+    (r"work[\s_-]*authoriz|authoriz.*work|legally.*work|eligible.*work|work[\s_-]*permit|right[\s_-]*to[\s_-]*work", "work_authorization"),
+    (r"sponsor", "requires_sponsorship"),
+    (r"years.*experience|experience.*years|yrs.*exp", "years_experience"),
+    (r"current.*(company|employer)|present[\s_-]*employer", "current_company"),
+    (r"current.*(title|role|position)|job[\s_-]*title", "current_title"),
+    (r"school|university|college|institution|alma[\s_-]*mater", "education_school"),
+    (r"degree|qualification|major|field[\s_-]*of[\s_-]*study", "education_degree"),
+    (r"\bskills?\b|technolog|proficien", "skills"),
+    (r"salary|compensation|expected[\s_-]*pay|desired[\s_-]*pay|pay[\s_-]*expectation", "salary_expectation"),
+    (r"how.*(hear|find).*(us|position|role|job)|referr|\bsource\b", "how_did_you_hear"),
+    (r"\bgender\b", "gender"),
+    (r"race|ethnicit", "race_ethnicity"),
+    (r"veteran", "veteran_status"),
+    (r"disab", "disability_status"),
+    (r"summary|about[\s_-]*you|tell[\s_-]*us[\s_-]*about", "summary"),
+]
+
+# Layer 1 — ATS-specific hints (matched against the field's name/id attribute,
+# which is stable even when a platform omits a visible <label>).
+ATS_HINTS = {
+    "greenhouse": [
+        (r"first_name", "first_name"), (r"last_name", "last_name"),
+        (r"\bemail\b", "email"), (r"phone", "phone"),
+        (r"resume", "resume_file"), (r"cover_letter", "cover_letter_file"),
+        (r"linkedin", "linkedin_url"), (r"github", "github_url"),
+        (r"website|portfolio", "portfolio_url"),
+    ],
+    "lever": [
+        (r"\bname\b", "full_name"), (r"\bemail\b", "email"), (r"phone", "phone"),
+        (r"org|company|current.*employer", "current_company"),
+        (r"urls\[linkedin\]|linkedin", "linkedin_url"),
+        (r"urls\[github\]|github", "github_url"),
+        (r"urls\[portfolio\]|portfolio|website", "portfolio_url"),
+        (r"resume", "resume_file"),
+    ],
+    "workday": [
+        (r"legalName.*first|firstName|givenName", "first_name"),
+        (r"legalName.*last|lastName|familyName", "last_name"),
+        (r"email", "email"), (r"phone|phoneNumber", "phone"),
+        (r"address.*city|city", "location"),
+        (r"resume|attachment", "resume_file"),
+        (r"source|howDidYouHear", "how_did_you_hear"),
+    ],
+    "ashby": [
+        (r"_systemfield_name|^name$", "full_name"),
+        (r"_systemfield_email|email", "email"),
+        (r"phone", "phone"),
+        (r"resume|_systemfield_resume", "resume_file"),
+        (r"linkedin", "linkedin_url"), (r"github", "github_url"),
+        (r"website|portfolio", "portfolio_url"),
+    ],
+}
+
+ATS_PATTERNS = {
+    "greenhouse": ["greenhouse.io", "grnh.se"],
+    "lever": ["lever.co"],
+    "workday": ["myworkdayjobs.com", "myworkday.com", ".workday."],
+    "ashby": ["ashbyhq.com"],
+}
+
+RULE_CONFIDENCE = 0.97   # confidence assigned to a deterministic (rule/hint/cache) match
+REVIEW_THRESHOLD = 0.75  # below this, the extension flags the field for review
+
+
+def _host_from_url(url):
+    h = re.sub(r"^https?://", "", (url or "").strip().lower())
+    return h.split("/")[0]
+
+
+def detect_ats(url):
+    host = _host_from_url(url)
+    for ats, pats in ATS_PATTERNS.items():
+        if any(p in host for p in pats):
+            return ats
+    return "generic"
+
+
+def _field_haystack(field):
+    return " ".join(str(field.get(k, "") or "") for k in ("label", "name", "placeholder", "key")).lower()
+
+
+def _rule_match(field, ats):
+    """Layers 1+2: try ATS hints (on name/id) then generic label rules.
+    Returns a role string or None."""
+    name_id = (str(field.get("name", "") or "") + " " + str(field.get("key", "") or "")).lower()
+    for pat, role in ATS_HINTS.get(ats, []):
+        if re.search(pat, name_id):
+            return role
+    hay = _field_haystack(field)
+    # A file input with no clearer signal is almost always the resume.
+    is_file = (field.get("type", "") or "").lower() == "file"
+    for pat, role in GENERIC_RULES:
+        if re.search(pat, hay):
+            return role
+    if is_file:
+        return "resume_file"
+    return None
+
+
+def _form_signature(ats, fields):
+    """Stable hash of a form's layout (labels+types), independent of any user.
+    Same form on the same ATS -> same signature -> cache reuse."""
+    basis = "|".join(sorted(
+        ((str(f.get("label", "") or f.get("name", "") or "")).strip().lower()
+         + ":" + (str(f.get("type", "") or "text")))
+        for f in fields
+    ))
+    return hashlib.sha256((ats + "::" + basis).encode("utf-8")).hexdigest()
+
+
+def get_form_map(ats, signature):
+    conn = get_db()
+    try:
+        row = db_one(conn, "SELECT field_map FROM form_maps WHERE ats = ? AND signature = ?",
+                     (ats, signature))
+    finally:
+        conn.close()
+    if not row:
+        return None
+    try:
+        return _json.loads(row["field_map"])
+    except Exception:
+        return None
+
+
+def save_form_map(ats, signature, field_map):
+    payload = _json.dumps(field_map)
+    conn = get_db()
+    try:
+        if USE_PG:
+            db_exec(conn,
+                "INSERT INTO form_maps (ats, signature, field_map) VALUES (?, ?, ?) "
+                "ON CONFLICT (ats, signature) DO UPDATE SET field_map = EXCLUDED.field_map",
+                (ats, signature, payload))
+        else:
+            db_exec(conn,
+                "INSERT OR REPLACE INTO form_maps (ats, signature, field_map) VALUES (?, ?, ?)",
+                (ats, signature, payload))
+        conn.commit()
+    except Exception as e:
+        print("save_form_map error:", str(e))
+    finally:
+        conn.close()
+
+
+def _gemini_map_fields(fields, ats):
+    """Layer 4: ask Gemini to map the still-unknown fields to roles.
+    Returns { field_key: (role, confidence) }. Degrades to {} on any error
+    (those fields then simply get flagged for the user to fill)."""
+    if not fields:
+        return {}
+    listing = "\n".join(
+        f'- key="{f.get("key","")}" | label="{f.get("label","")}" | name="{f.get("name","")}" '
+        f'| type="{f.get("type","text")}" | options={f.get("options", [])}'
+        for f in fields
+    )
+    roles = ", ".join(sorted(VAULT_ROLES))
+    prompt = f"""You map job-application FORM FIELDS to a fixed set of candidate-data ROLES.
+
+ATS platform: {ats}
+Allowed roles (use EXACTLY one of these strings, or "unknown"):
+{roles}
+
+For each field, pick the single role whose data should fill it, with a confidence 0.0-1.0.
+Use "unknown" (confidence 0) for things like custom screening questions you can't map.
+Return ONLY this JSON, nothing else:
+{{"map": {{"<field key>": {{"role": "<role-or-unknown>", "confidence": <0.0-1.0>}}}}}}
+
+FIELDS:
+{listing}
+"""
+    try:
+        resp = model.generate_content(prompt)
+        data = _extract_json(resp.text or "") or {}
+        out = {}
+        for k, v in (data.get("map") or {}).items():
+            role = (v or {}).get("role")
+            try:
+                conf = float((v or {}).get("confidence", 0))
+            except Exception:
+                conf = 0.0
+            if role in VAULT_ROLES:
+                out[str(k)] = (role, max(0.0, min(1.0, conf)))
+        return out
+    except Exception as e:
+        print("autofill gemini error:", str(e))
+        return {}
+
+
+def _resolve_role_value(role, vault):
+    """Turn a role into the actual value to type, from the user's vault.
+    File roles return a marker the extension recognizes. Unknown / not-on-file
+    roles return "" so the field gets surfaced for review."""
+    v = vault or {}
+    full = (v.get("full_name") or "").strip()
+    parts = full.split()
+    table = {
+        "full_name": full,
+        "first_name": parts[0] if parts else "",
+        "last_name": " ".join(parts[1:]) if len(parts) > 1 else "",
+        "email": v.get("email") or "",
+        "phone": v.get("phone") or "",
+        "location": v.get("location") or "",
+        "linkedin_url": v.get("linkedin_url") or "",
+        "github_url": v.get("github_url") or "",
+        "portfolio_url": v.get("portfolio_url") or "",
+        "website": v.get("portfolio_url") or "",
+        "work_authorization": v.get("work_authorization") or "",
+        "skills": v.get("skills") or "",
+        "resume_file": "@resume",
+        "cover_letter_file": "@cover_letter",
+    }
+    return table.get(role, "")
+
+
+class AutofillField(BaseModel):
+    key: str
+    label: str = ""
+    name: str = ""
+    type: str = "text"
+    placeholder: str = ""
+    options: List[str] = []
+
+
+class AutofillRequest(BaseModel):
+    url: str = ""
+    fields: List[AutofillField] = []
+
+
+@app.post("/autofill-plan")
+def autofill_plan(data: AutofillRequest, authorization: Optional[str] = Header(None)):
+    """Given a serialized form (from the extension) + the logged-in user's vault,
+    return a fill plan: for each field a value, a confidence, and whether it
+    needs human review. Uses hints -> rules -> cache -> AI, in that order."""
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in to use auto-apply."}
+
+    fields = [f.dict() for f in data.fields]
+    if not fields:
+        return {"success": False, "error": "No form fields received."}
+
+    conn = get_db()
+    try:
+        vrow = db_one(conn, "SELECT * FROM profile_vault WHERE user_id = ?", (user["id"],))
+    finally:
+        conn.close()
+    vault = dict(vrow) if vrow else {}
+
+    ats = detect_ats(data.url)
+    signature = _form_signature(ats, fields)
+    cached = get_form_map(ats, signature) or {}
+
+    role_map = {}          # field key -> role
+    conf_map = {}          # field key -> confidence
+    unresolved = []        # fields needing the AI layer
+
+    for f in fields:
+        key = f.get("key")
+        if key in cached:
+            role_map[key] = cached[key]
+            conf_map[key] = RULE_CONFIDENCE
+            continue
+        role = _rule_match(f, ats)
+        if role:
+            role_map[key] = role
+            conf_map[key] = RULE_CONFIDENCE
+        else:
+            unresolved.append(f)
+
+    # Layer 4 — only call the model for what's left. Fields the AI also can't
+    # map are recorded as "unknown" so we remember the verdict and never pay
+    # for them again on this form layout.
+    if unresolved:
+        ai = _gemini_map_fields(unresolved, ats)
+        for f in unresolved:
+            key = f.get("key")
+            if key in ai:
+                role, conf = ai[key]
+                role_map[key] = role
+                conf_map[key] = conf
+            else:
+                role_map[key] = "unknown"
+                conf_map[key] = 0.0
+
+    # Persist the generic field->role map (no personal values) for reuse.
+    if role_map and role_map != cached:
+        save_form_map(ats, signature, role_map)
+
+    plan = []
+    filled = 0
+    for f in fields:
+        key = f.get("key")
+        role = role_map.get(key)
+        if role == "unknown":
+            role = None
+        conf = conf_map.get(key, 0.0)
+        value = _resolve_role_value(role, vault) if role else ""
+        sensitive = role in SENSITIVE_ROLES if role else False
+        is_file = role in ("resume_file", "cover_letter_file")
+        # Needs review when: sensitive, unmapped, low confidence, or mapped but
+        # we have no value on file for it (so the user can supply it).
+        needs_review = bool(
+            sensitive
+            or role is None
+            or conf < REVIEW_THRESHOLD
+            or (role and not is_file and not value)
+        )
+        if value and not needs_review:
+            filled += 1
+        plan.append({
+            "key": key,
+            "label": f.get("label", ""),
+            "role": role,
+            "value": value,
+            "is_file": is_file,
+            "confidence": round(conf, 2),
+            "sensitive": sensitive,
+            "needs_review": needs_review,
+        })
+
+    return {
+        "success": True,
+        "ats": ats,
+        "signature": signature,
+        "filled_count": filled,
+        "total": len(plan),
+        "plan": plan,
+    }
 
 
 # ============================================================

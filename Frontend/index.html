@@ -2189,6 +2189,7 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
         </ul>
 
         <div class="nav-buttons">
+            <button class="nav-track-btn" id="navResumesBtn" title="My Resumes">📄 My Resumes</button>
             <button class="nav-track-btn" id="navTrackerBtn" title="My Applications">📋 My Applications</button>
             <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark / light mode">🌙</button>
             <button class="login-btn" id="loginBtn">Login</button>
@@ -3059,6 +3060,13 @@ document.addEventListener("click", async function (e) {
         const data = await res.json();
         if (data.success && data.cv) {
             window.__cvText = data.cv;
+            // Save the CV to the user's history (if logged in)
+            if (_authTok()) {
+                fetch(`${API_BASE}/resumes/save`, {
+                    method: "POST", headers: _authHdr(),
+                    body: JSON.stringify({ kind: "cv", title: "Full CV", content: data.cv, job_company: "", job_role: "" })
+                }).catch(function () {});
+            }
             out.innerHTML = `<p class="portfolio-ok">✅ Your full CV is ready!</p>`
               + `<div class="portfolio-actions">`
               + `<button id="viewCvBtn" class="pdf-btn">👁 View</button>`
@@ -3295,6 +3303,19 @@ document.addEventListener("click", async function (e) {
                 app.tailored_resume = data.tailored_resume;
                 app.changes = data.changes || [];
                 app.requirements = data.requirements || {};
+                // Save this tailored resume to the user's history (if logged in)
+                if (_authTok()) {
+                    fetch(`${API_BASE}/resumes/save`, {
+                        method: "POST", headers: _authHdr(),
+                        body: JSON.stringify({
+                            kind: "tailored",
+                            title: job.title || "",
+                            content: data.tailored_resume,
+                            job_company: job.company || "",
+                            job_role: job.title || ""
+                        })
+                    }).catch(function () {});
+                }
             } else {
                 app.error = data.error || "Could not tailor.";
             }
@@ -3481,6 +3502,133 @@ function closeTracker() {
     const o = document.getElementById("trackerOverlay");
     if (o) { o.classList.remove("open"); document.body.style.overflow = ""; }
 }
+
+// ===== Resume history panel (logged-in users) =====
+function _rhDate(v) {
+    try {
+        if (v == null || v === "") return "";
+        let d;
+        if (typeof v === "number") d = new Date(v * 1000);
+        else if (/^\d+(\.\d+)?$/.test(String(v))) d = new Date(parseFloat(v) * 1000);
+        else d = new Date(v);
+        if (isNaN(d.getTime())) return "";
+        return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    } catch (e) { return ""; }
+}
+
+function renderResumes(list) {
+    if (!list || !list.length)
+        return `<div class="rh-empty">No resumes yet.<br>Generate one from your LinkedIn + GitHub and it'll be saved here automatically.</div>`;
+    const groups = [
+        { kind: "resume", title: "⭐ Base resume — from your LinkedIn + GitHub", badge: "base", label: "Base" },
+        { kind: "tailored", title: "🎯 Tailored for specific jobs", badge: "tailored", label: "Tailored" },
+        { kind: "cv", title: "📚 Full CV", badge: "cv", label: "CV" }
+    ];
+    let h = "";
+    const known = ["resume", "tailored", "cv"];
+    groups.forEach(g => {
+        const items = list.filter(r => (r.kind || "resume") === g.kind);
+        if (!items.length) return;
+        h += `<div class="rh-group-title">${g.title} <span style="color:#8a837c;font-weight:400">(${items.length})</span></div>`;
+        items.forEach(it => {
+            const idx = list.indexOf(it);
+            const sub = [it.job_company, it.job_role].filter(Boolean).join(" · ");
+            h += `<div class="rh-card">
+                <div class="rh-top">
+                    <span class="rh-title">${_esc(it.title || (g.label + " resume"))}</span>
+                    <span class="rh-badge ${g.badge}">${g.label}</span>
+                </div>
+                <div class="rh-meta">${sub ? _esc(sub) + " • " : ""}${_rhDate(it.created_at)}</div>
+                <div class="rh-actions">
+                    <button class="rh-view" data-idx="${idx}">👁 View</button>
+                    <button class="rh-copy" data-idx="${idx}">📋 Copy</button>
+                    <button class="rh-dl primary" data-idx="${idx}">📥 Download PDF</button>
+                </div>
+                <div class="rh-preview" id="rhPrev${idx}"></div>
+            </div>`;
+        });
+    });
+    const others = list.filter(r => !known.includes(r.kind || "resume"));
+    if (others.length) {
+        h += `<div class="rh-group-title">📄 Other documents</div>`;
+        others.forEach(it => {
+            const idx = list.indexOf(it);
+            h += `<div class="rh-card">
+                <div class="rh-top"><span class="rh-title">${_esc(it.title || "Document")}</span></div>
+                <div class="rh-meta">${_rhDate(it.created_at)}</div>
+                <div class="rh-actions">
+                    <button class="rh-view" data-idx="${idx}">👁 View</button>
+                    <button class="rh-copy" data-idx="${idx}">📋 Copy</button>
+                </div>
+                <div class="rh-preview" id="rhPrev${idx}"></div>
+            </div>`;
+        });
+    }
+    return h;
+}
+
+async function openResumes() {
+    const body = document.getElementById("resumesBody");
+    const o = document.getElementById("resumesOverlay");
+    if (o) { o.classList.add("open"); document.body.style.overflow = "hidden"; }
+    if (!_authTok()) {
+        if (body) body.innerHTML = `<div class="rh-empty">Please log in to see and store your resume history.<br>Once logged in, every resume you generate — base, tailored, and CV — is saved to your account.</div>`;
+        return;
+    }
+    if (body) body.innerHTML = `<div class="match-loading">Loading your resumes…</div>`;
+    try {
+        const res = await fetch(`${API_BASE}/resumes`, { headers: _authHdr() });
+        const data = await res.json();
+        if (data.success) {
+            window.__resumeHistory = data.resumes || [];
+            body.innerHTML = renderResumes(window.__resumeHistory);
+        } else {
+            body.innerHTML = `<div class="rh-empty">${_esc(data.error || "Could not load your resumes.")}</div>`;
+        }
+    } catch (e) {
+        body.innerHTML = `<div class="rh-empty">Couldn't reach the server. Is the backend running?</div>`;
+    }
+}
+function closeResumes() {
+    const o = document.getElementById("resumesOverlay");
+    if (o) { o.classList.remove("open"); document.body.style.overflow = ""; }
+}
+
+document.addEventListener("click", function (e) {
+    if (e.target.id === "navResumesBtn") { openResumes(); return; }
+    if (e.target.id === "resumesClose" || e.target.id === "resumesOverlay") { closeResumes(); return; }
+    const v = e.target.closest(".rh-view");
+    if (v) {
+        const i = +v.getAttribute("data-idx");
+        const box = document.getElementById("rhPrev" + i);
+        const it = (window.__resumeHistory || [])[i];
+        if (!box || !it) return;
+        if (box.style.display === "block") { box.style.display = "none"; v.textContent = "👁 View"; }
+        else { box.innerHTML = formatResumeHTML(it.content || ""); box.style.display = "block"; v.textContent = "🔼 Hide"; }
+        return;
+    }
+    const c = e.target.closest(".rh-copy");
+    if (c) {
+        const it = (window.__resumeHistory || [])[+c.getAttribute("data-idx")];
+        if (it) navigator.clipboard.writeText(it.content || "").then(() => {
+            c.textContent = "✅ Copied"; setTimeout(() => c.textContent = "📋 Copy", 1500);
+        }).catch(() => {});
+        return;
+    }
+    const d = e.target.closest(".rh-dl");
+    if (d) {
+        const it = (window.__resumeHistory || [])[+d.getAttribute("data-idx")];
+        if (!it) return;
+        const fname = ((it.title || "Resume").replace(/[^A-Za-z0-9]+/g, "_") || "Resume") + ".pdf";
+        d.textContent = "⏳ …";
+        _downloadBlobFrom("/download-resume-pdf",
+            { template: "classic", resume: it.content || "", name: ((it.content || "").split("\n")[0] || "").trim(), role: it.job_role || "" },
+            fname
+        ).then(() => { d.textContent = "📥 Download PDF"; })
+         .catch(() => { d.textContent = "Retry"; alert("Could not download. Is the backend running?"); });
+        return;
+    }
+});
 
 document.addEventListener("click", async function (e) {
     if (e.target.id === "openTrackerBtn" || e.target.id === "navTrackerBtn") { openTracker(); return; }
@@ -3819,6 +3967,37 @@ updateTrackerCount();
         <div class="jobs-modal-body" id="trackerBody"></div>
     </div>
 </div>
+
+<!-- ===== RESUME HISTORY PANEL ===== -->
+<div class="jobs-overlay" id="resumesOverlay">
+    <div class="jobs-modal">
+        <div class="jobs-modal-head">
+            <h3>📄 My Resume History</h3>
+            <button class="jobs-modal-x" id="resumesClose" aria-label="Close">&times;</button>
+        </div>
+        <div class="jobs-modal-body" id="resumesBody"></div>
+    </div>
+</div>
+
+<style>
+.rh-group-title { font-weight: 700; margin: 14px 0 8px; font-size: 14px; color: var(--accent, #6b4f3a); }
+.rh-card { border: 1px solid var(--border, #e3ddd5); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: var(--card-bg, #fff); }
+.rh-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.rh-title { font-weight: 700; font-size: 14px; }
+.rh-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .4px; }
+.rh-badge.base { background: #e8f0fe; color: #1a56c4; }
+.rh-badge.tailored { background: #e7f6ec; color: #1f8a4c; }
+.rh-badge.cv { background: #f3e8fe; color: #7a3bbf; }
+.rh-meta { font-size: 11px; color: #8a837c; margin-top: 3px; }
+.rh-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+.rh-actions button { font-size: 12px; padding: 6px 11px; border-radius: 7px; border: 1px solid var(--border, #d8d2cc); background: #f6f4f1; cursor: pointer; }
+.rh-actions button.primary { background: #2e9e5b; color: #fff; border: 0; }
+.rh-preview { display: none; margin-top: 10px; padding: 10px; border-radius: 8px; background: #faf8f5; max-height: 280px; overflow: auto; font-size: 12px; }
+body.dark-mode .rh-card { background: #1a1814; }
+body.dark-mode .rh-actions button { background: #242019; color: #e8e2d8; }
+body.dark-mode .rh-preview { background: #141210; }
+.rh-empty { text-align: center; color: #8a837c; padding: 30px 10px; }
+</style>
 
 <!-- ===== JOB OPENINGS PANEL ===== -->
 <div class="jobs-overlay" id="jobsOverlay">

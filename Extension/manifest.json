@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "ResumeForge Auto-Apply",
+  "version": "0.1.0",
+  "description": "Autofill job applications with your ResumeForge profile and tailored resume. You always review and click Submit yourself.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ResumeForge Auto-Apply"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

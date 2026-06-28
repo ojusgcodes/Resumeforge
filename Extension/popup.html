@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { width: 320px; margin: 0; font: 13px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #2b2b2b; }
+    header { background: #3f4a56; color: #fff; padding: 12px 14px; font-weight: 700; }
+    .wrap { padding: 14px; }
+    label { display: block; font-size: 11px; color: #6b645d; margin: 8px 0 3px; }
+    input { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #cfc9c3; border-radius: 7px; font-size: 13px; }
+    button { width: 100%; padding: 9px; border: 0; border-radius: 8px; font-weight: 700; cursor: pointer; margin-top: 10px; }
+    .primary { background: #2e9e5b; color: #fff; }
+    .ghost { background: #f4f1ee; border: 1px solid #d8d2cc; color: #2b2b2b; }
+    .muted { font-size: 11px; color: #8a837c; margin-top: 8px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    #status { font-size: 12px; margin-top: 8px; min-height: 16px; }
+    .ok { color: #2e7d46; }
+    .err { color: #b33; }
+    hr { border: 0; border-top: 1px solid #eee; margin: 14px 0; }
+    .hide { display: none; }
+    .queue-item { padding: 7px 0; border-bottom: 1px solid #f0ece8; }
+    .queue-item b { font-size: 12px; }
+    .queue-item a { font-size: 11px; color: #2e9e5b; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header>ResumeForge Auto-Apply</header>
+  <div class="wrap">
+
+    <div id="loggedOut">
+      <label>Backend URL</label>
+      <input id="apiBase" placeholder="https://your-app.onrender.com">
+      <label>Email</label>
+      <input id="email" type="email" placeholder="you@example.com">
+      <label>Password</label>
+      <input id="password" type="password" placeholder="••••••••">
+      <button id="loginBtn" class="primary">Log in</button>
+      <div class="muted">Tip: if you're already signed in to ResumeForge in a tab, just open that tab once and the extension picks up your login automatically.</div>
+    </div>
+
+    <div id="loggedIn" class="hide">
+      <div class="row">
+        <div>Signed in as <b id="who"></b></div>
+        <a id="logoutBtn" style="color:#b33;cursor:pointer;font-size:12px">Log out</a>
+      </div>
+      <hr>
+      <button id="fillBtn" class="primary">⚡ Fill the form on this tab</button>
+      <div id="queueWrap" class="hide">
+        <hr>
+        <div style="font-weight:700;font-size:12px;margin-bottom:4px">Your apply queue</div>
+        <div id="queue"></div>
+      </div>
+    </div>
+
+    <div id="status"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
