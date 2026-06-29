@@ -3150,7 +3150,7 @@ function _extBanner() {
     if (on) {
         return `<div class="ext-banner ext-on">🧩 <b>Auto-Apply extension connected.</b> Tick jobs → <b>Apply &amp; Track</b>, then open each posting and click <b>⚡ Fill this form</b>.</div>`;
     }
-    return `<div class="ext-banner ext-off">🧩 <b>Install the free Auto-Apply Chrome extension</b> to auto-fill these job applications — fill an entire form in one click, you just review &amp; submit. <a href="#" id="extInstallLink">How to install →</a></div>`;
+    return `<div class="ext-banner ext-off">🧩 <b>Install the free Auto-Apply extension</b> to auto-fill these job applications in one click — you just review &amp; submit. <a href="extension.html" target="_blank" id="extInstallLink">⬇ Download &amp; install (2 min) →</a></div>`;
 }
 
 function renderJobs(d) {
@@ -3569,7 +3569,7 @@ document.addEventListener("click", function (e) {
     if (qd) { removeAutoQueue(qd.getAttribute("data-url")); return; }
     if (e.target.id === "qExtHelp" || e.target.id === "extInstallLink") {
         e.preventDefault();
-        alert("Set up Auto-Apply in 2 steps:\n\n1) Open chrome://extensions → turn on Developer mode → Load unpacked → pick the 'Extension' folder.\n\n2) Come back here while logged in — the extension connects to your account automatically.\n\nThen open any job posting and click '⚡ Fill this form' to auto-fill the application.");
+        window.open("extension.html", "_blank");
         return;
     }
 });
@@ -3912,6 +3912,10 @@ updateTrackerCount();
         <p class="feedback">
             💬 Give your feedback at
             <a href="mailto:resumeforgeofficial@gmail.com">resumeforgeofficial@gmail.com</a>
+        </p>
+
+        <p class="feedback">
+            <a href="extension.html">⬇ Get the Auto-Apply Extension</a>
         </p>
 
         <p class="feedback">
