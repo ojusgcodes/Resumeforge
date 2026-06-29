@@ -42,6 +42,26 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 
+# ---------------------------------------------------------------------------
+# Observability: structured logging + optional Sentry error monitoring.
+# Set SENTRY_DSN in the environment to turn on error tracking (no-op if unset,
+# so it never breaks local/dev runs).
+# ---------------------------------------------------------------------------
+import logging
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logger = logging.getLogger("resumeforge")
+
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=0.1, send_default_pii=False)
+        logger.info("Sentry error monitoring enabled.")
+    except Exception as _e:
+        logger.warning("Sentry init failed: %s", _e)
+
+
 app = FastAPI()
 
 # ---------------------------------------------------------------------------
@@ -99,6 +119,33 @@ async def rate_limit_mw(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log slow responses and server errors so production issues are visible
+    in the Render logs (and Sentry, if configured)."""
+    start = time.time()
+    try:
+        resp = await call_next(request)
+    except Exception:
+        logger.exception("Error handling %s %s", request.method, request.url.path)
+        raise
+    dur = (time.time() - start) * 1000
+    if resp.status_code >= 500 or dur > 4000:
+        logger.warning("%s %s -> %s in %.0fms",
+                       request.method, request.url.path, resp.status_code, dur)
+    return resp
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception(request: Request, exc: Exception):
+    """Never leak a raw 500/stack trace — log it and return clean JSON."""
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"success": False, "error": "Something went wrong on our side. Please try again."},
+    )
+
+
 class ResumeRequest(BaseModel):
     github: str
     company: str
@@ -114,6 +161,13 @@ def home():
     return {
         "message": "ResumeForge Backend Running"
     }
+
+
+@app.get("/health")
+def health():
+    """Ultra-light, no-DB endpoint for uptime pingers (e.g. UptimeRobot) to hit
+    every ~10 min so Render's free instance doesn't sleep — avoids cold starts."""
+    return {"ok": True}
 
 
 # ============================================================
@@ -240,6 +294,17 @@ def init_db():
             field_map TEXT NOT NULL,
             created_at REAL NOT NULL DEFAULT (strftime('%s','now')),
             UNIQUE (ats, signature)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event TEXT NOT NULL,
+            path TEXT,
+            user_id INTEGER,
+            created_at REAL NOT NULL DEFAULT (strftime('%s','now'))
         )
         """
     )
@@ -576,6 +641,41 @@ def save_vault(data: VaultRequest, authorization: Optional[str] = Header(None)):
                 "github_url, portfolio_url, education, experience, skills, work_authorization) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (user["id"],) + fields)
         conn.commit()
+    finally:
+        conn.close()
+    return {"success": True}
+
+
+# ============================================================
+# LIGHTWEIGHT PRODUCT ANALYTICS
+# Records only event names + page path (no resume content / PII), so we can
+# see the funnel: visits -> signups -> generations -> downloads -> installs.
+# ============================================================
+
+class TrackRequest(BaseModel):
+    event: str = ""
+    path: str = ""
+
+
+@app.post("/track")
+def track_event(data: TrackRequest, authorization: Optional[str] = Header(None)):
+    ev = (data.event or "").strip()[:64]
+    if not ev:
+        return {"success": True}
+    uid = None
+    try:
+        u = get_user_from_token(authorization)
+        if u:
+            uid = u["id"]
+    except Exception:
+        uid = None
+    conn = get_db()
+    try:
+        db_exec(conn, "INSERT INTO events (event, path, user_id) VALUES (?, ?, ?)",
+                (ev, (data.path or "")[:200], uid))
+        conn.commit()
+    except Exception as e:
+        print("track error:", str(e))
     finally:
         conn.close()
     return {"success": True}

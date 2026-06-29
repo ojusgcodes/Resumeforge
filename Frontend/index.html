@@ -2432,6 +2432,41 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
         // automatically — the user never has to type it.
         try { localStorage.setItem("rf_api_base", API_BASE); } catch (e) {}
 
+        // Warm the backend immediately on page load. Render's free tier sleeps
+        // after inactivity; pinging /health now means the instance is already
+        // awake by the time the user clicks Generate, hiding the cold start.
+        try { fetch(`${API_BASE}/health`).catch(function () {}); } catch (e) {}
+
+        // ---- Lightweight, privacy-friendly analytics (event name + path only) ----
+        function rfTrack(ev) {
+            try {
+                const tok = (function () { try { return localStorage.getItem("rf_token"); } catch (e) { return null; } })();
+                const h = { "Content-Type": "application/json" };
+                if (tok) h["Authorization"] = "Bearer " + tok;
+                fetch(`${API_BASE}/track`, {
+                    method: "POST", headers: h, keepalive: true,
+                    body: JSON.stringify({ event: ev, path: location.pathname })
+                }).catch(function () {});
+            } catch (e) {}
+        }
+        window.rfTrack = rfTrack;
+        document.addEventListener("DOMContentLoaded", function () { rfTrack("pageview"); });
+        // Capture the key funnel via clicks (non-invasive)
+        document.addEventListener("click", function (e) {
+            try {
+                const map = {
+                    watchDemoBtn: "watch_demo", generateBtn: "generate_click", signupBtn: "signup_open",
+                    loginBtn: "login_open", navResumesBtn: "open_resumes", navTrackerBtn: "open_tracker",
+                    viewQueueBtn: "open_queue", extInstallLink: "ext_install_help", qExtHelp: "ext_install_help"
+                };
+                if (e.target && map[e.target.id]) { rfTrack(map[e.target.id]); return; }
+                if (e.target.closest) {
+                    if (e.target.closest(".tpl-card")) { rfTrack("template_download"); return; }
+                    if (e.target.closest(".app-apply")) { rfTrack("apply_track"); return; }
+                }
+            } catch (x) {}
+        });
+
         document.getElementById("generateBtn")
             .addEventListener("click", async () => {
                 const btn = document.getElementById("generateBtn");
@@ -2749,6 +2784,7 @@ window.__matchData = {
 if (window.activateChat) {
     window.activateChat(data.resume, { company: company, role: role });
 }
+try { if (window.rfTrack) window.rfTrack("resume_generated"); } catch (e) {}
 // Save resume + vault to the account (if logged in)
 (function () {
     const tok = (function(){ try { return localStorage.getItem("rf_token"); } catch(e){ return null; } })();
@@ -3876,6 +3912,12 @@ updateTrackerCount();
         <p class="feedback">
             💬 Give your feedback at
             <a href="mailto:resumeforgeofficial@gmail.com">resumeforgeofficial@gmail.com</a>
+        </p>
+
+        <p class="feedback">
+            <a href="privacy.html">Privacy Policy</a> &nbsp;·&nbsp;
+            <a href="terms.html">Terms of Service</a> &nbsp;·&nbsp;
+            <a href="about.html">About</a>
         </p>
 
         <p class="copyright">

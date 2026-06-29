@@ -79,8 +79,19 @@ create table if not exists form_maps (
     unique (ats, signature)
 );
 
+-- Lightweight, privacy-friendly product analytics. Stores event names and the
+-- page path only — never resume content or personal data.
+create table if not exists events (
+    id         bigserial primary key,
+    event      text not null,
+    path       text,
+    user_id    bigint,
+    created_at timestamptz not null default now()
+);
+
 -- Helpful indexes
 create index if not exists idx_resumes_user  on resumes(user_id);
+create index if not exists idx_events_name  on events(event);
 create index if not exists idx_apps_user     on applications(user_id);
 create index if not exists idx_sessions_email on sessions(email);
 create index if not exists idx_formmaps_sig  on form_maps(ats, signature);

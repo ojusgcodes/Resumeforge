@@ -8,3 +8,4 @@ playwright
 pypdf
 requests
 psycopg2-binary
+sentry-sdk
