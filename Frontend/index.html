@@ -2684,6 +2684,8 @@ document.getElementById("result").innerHTML = `
         </div>
 
     </div>
+    <button id="openApplyHubBtn" class="hub-open-btn">🚀 Apply to Jobs — find roles &amp; apply</button>
+    <button id="openProofBtn" class="hub-open-btn" style="background:#1d7a4d !important;margin-top:10px;">🔬 Proof &amp; Prep — make every claim defensible</button>
     </div>
 
     <div class="result-tools">
@@ -2785,6 +2787,8 @@ if (window.activateChat) {
     window.activateChat(data.resume, { company: company, role: role });
 }
 try { if (window.rfTrack) window.rfTrack("resume_generated"); } catch (e) {}
+// Open the full-screen Apply Hub and auto-load the user's roles.
+try { if (window.openApplyHub) setTimeout(function () { openApplyHub(true); }, 650); } catch (e) {}
 // Save resume + vault to the account (if logged in)
 (function () {
     const tok = (function(){ try { return localStorage.getItem("rf_token"); } catch(e){ return null; } })();
@@ -3200,6 +3204,42 @@ function closeJobsPanel() {
     const o = document.getElementById("jobsOverlay");
     if (o) { o.classList.remove("open"); document.body.style.overflow = ""; }
 }
+
+// ===== Apply Hub (full-screen, sequenced apply experience) =====
+function _hubMove(sel, slotId) {
+    const el = document.querySelector(sel), slot = document.getElementById(slotId);
+    if (el && slot && el.parentElement !== slot) slot.appendChild(el);
+}
+let _hubAutoDiscovered = false;
+function openApplyHub(autoDiscover) {
+    // Relocate the working sections into the full-screen hub (idempotent).
+    _hubMove(".role-match-banner", "hubSlotRoles");
+    _hubMove(".jobs-banner", "hubSlotJobs");
+    _hubMove(".apps-banner", "hubSlotApps");
+    const o = document.getElementById("applyHub");
+    if (o) { o.classList.add("open"); document.body.style.overflow = "hidden"; }
+    o && o.scrollTo && o.scrollTo(0, 0);
+    if (autoDiscover && !_hubAutoDiscovered) {
+        _hubAutoDiscovered = true;
+        const b = document.getElementById("matchRolesBtn");
+        if (b) setTimeout(function () { b.click(); }, 350);  // auto-load the user's roles
+    }
+}
+function closeApplyHub() {
+    const o = document.getElementById("applyHub");
+    if (o) { o.classList.remove("open"); document.body.style.overflow = ""; }
+}
+window.openApplyHub = openApplyHub;
+document.addEventListener("click", function (e) {
+    if (e.target.id === "hubClose") { closeApplyHub(); return; }
+    if (e.target.id === "openApplyHubBtn") { openApplyHub(false); return; }
+});
+document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+        const o = document.getElementById("applyHub");
+        if (o && o.classList.contains("open")) closeApplyHub();
+    }
+});
 
 async function doJobSearch(role, location) {
     const out = document.getElementById("jobsPanelResults");
@@ -4208,6 +4248,299 @@ updateTrackerCount();
         </div>
     </div>
 </div>
+
+<!-- ===== APPLY HUB (full-screen, opens after resume generation) ===== -->
+<style>
+.hub-overlay { position:fixed; inset:0; z-index:310; background:var(--cream,#f7f5ef); overflow-y:auto; display:none; }
+.hub-overlay.open { display:block; }
+.hub-head { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 6%; background:rgba(247,245,239,.96); backdrop-filter:blur(8px); border-bottom:1px solid var(--border,#e3ded2); }
+.hub-head h2 { margin:0; font-size:1.5rem; color:var(--ink,#15110c); }
+.hub-head p { margin:2px 0 0; color:var(--muted,#54503f); font-size:.92rem; }
+.hub-x { background:none; border:0; font-size:30px; cursor:pointer; color:var(--ink,#15110c); line-height:1; }
+.hub-body { max-width:1000px; margin:0 auto; padding:24px 20px 90px; }
+.hub-step { background:var(--card,#fffdf9); border:1px solid var(--border,#e3ded2); border-radius:16px; padding:22px 24px; margin-bottom:20px; }
+.hub-step-h { display:flex; align-items:center; gap:12px; font-size:1.3rem; font-weight:700; color:var(--ink,#15110c); }
+.hub-num { flex:0 0 34px; height:34px; border-radius:50%; background:var(--accent,#9a3b1c); color:#fff; font-size:1.05rem; display:flex; align-items:center; justify-content:center; }
+.hub-sub { color:var(--muted,#54503f); font-size:.94rem; margin:6px 0 16px 46px; }
+.hub-slot > div { background:transparent !important; border:none !important; padding:0 !important; margin:0 !important; box-shadow:none !important; }
+.hub-slot > div > h3 { display:none !important; }
+.hub-slot > div > p:first-of-type { display:none !important; }
+.hub-ext { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+.hub-ext .txt { flex:1 1 320px; color:var(--muted2,#54503f); line-height:1.6; }
+.hub-ext a.big { display:inline-block; background:#2e9e5b; color:#fff; text-decoration:none; font-weight:700; padding:12px 22px; border-radius:10px; margin-top:10px; }
+.hub-open-btn { width:100%; margin-top:14px; font-size:1.08rem !important; padding:15px !important; background:var(--accent,#9a3b1c) !important; color:#fff !important; border:0; border-radius:10px; cursor:pointer; font-weight:700; }
+body.dark-mode .hub-overlay { background:#0e0d0b; }
+body.dark-mode .hub-head { background:rgba(14,13,11,.96); border-bottom-color:#2a2823; }
+body.dark-mode .hub-step { background:#17150f; border-color:#2a2823; }
+@media (max-width:560px){ .hub-step-h{font-size:1.12rem;} .hub-sub{margin-left:0;} }
+</style>
+<div class="hub-overlay" id="applyHub">
+    <div class="hub-head">
+        <div>
+            <h2>🚀 Apply to Jobs</h2>
+            <p>Your resume is ready — follow the 4 steps to find roles and apply faster.</p>
+        </div>
+        <button class="hub-x" id="hubClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="hub-body">
+        <div class="hub-step">
+            <div class="hub-step-h"><span class="hub-num">1</span> Roles you can apply for</div>
+            <p class="hub-sub">See which roles you qualify for — then click a role to find live openings for it.</p>
+            <div class="hub-slot" id="hubSlotRoles"></div>
+        </div>
+        <div class="hub-step">
+            <div class="hub-step-h"><span class="hub-num">2</span> Find &amp; pick job openings</div>
+            <p class="hub-sub">Search real openings and tick the ones you want to apply to.</p>
+            <div class="hub-slot" id="hubSlotJobs"></div>
+        </div>
+        <div class="hub-step">
+            <div class="hub-step-h"><span class="hub-num">3</span> Tailor &amp; apply</div>
+            <p class="hub-sub">AI writes a resume tailored to each job you picked, then adds it to your apply queue.</p>
+            <div class="hub-slot" id="hubSlotApps"></div>
+        </div>
+        <div class="hub-step">
+            <div class="hub-step-h"><span class="hub-num">4</span> Apply on autopilot</div>
+            <p class="hub-sub">Install the free Chrome extension — it fills each application for you. You just review &amp; submit.</p>
+            <div class="hub-slot">
+                <div class="hub-ext">
+                    <div class="txt">
+                        <b>ResumeForge Auto-Apply extension</b><br>
+                        Open any job posting and click “Fill this form” — your details and the right resume are entered instantly, so you can apply to many jobs in minutes.
+                        <br><a class="big" href="extension.html" target="_blank">⬇ Get the extension (2 min)</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== PROOF & PREP PANEL (the differentiator) ===== -->
+<style>
+.pp-overlay{position:fixed;inset:0;z-index:315;background:var(--cream,#f7f5ef);overflow-y:auto;display:none;}
+.pp-overlay.open{display:block;}
+.pp-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 6%;background:rgba(247,245,239,.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--border,#e3ded2);}
+.pp-head h2{margin:0;font-size:1.4rem;color:var(--ink,#15110c);}
+.pp-head p{margin:2px 0 0;color:var(--muted,#54503f);font-size:.9rem;}
+.pp-x{background:none;border:0;font-size:30px;cursor:pointer;color:var(--ink,#15110c);line-height:1;}
+.pp-tabs{display:flex;gap:8px;flex-wrap:wrap;max-width:1000px;margin:0 auto;padding:16px 20px 0;}
+.pp-tab{border:1px solid var(--border,#e3ded2);background:#fff;color:var(--ink,#15110c);border-radius:999px;padding:8px 16px;font-size:.92rem;font-weight:600;cursor:pointer;}
+.pp-tab.active{background:var(--accent,#9a3b1c);color:#fff;border-color:var(--accent,#9a3b1c);}
+.pp-body{max-width:1000px;margin:0 auto;padding:20px;padding-bottom:90px;}
+.pp-pane h3{font-size:1.2rem;margin:0 0 6px;color:var(--ink,#15110c);}
+.pp-pane .pp-lead{color:var(--muted,#54503f);margin-bottom:14px;}
+.pp-btn{background:var(--accent,#9a3b1c);color:#fff;border:0;border-radius:9px;padding:11px 18px;font-weight:700;cursor:pointer;font-size:.98rem;}
+.pp-input,.pp-ta{width:100%;box-sizing:border-box;border:1px solid var(--border,#e3ded2);border-radius:9px;padding:11px;font-size:.98rem;margin-bottom:10px;font-family:inherit;}
+.pp-ta{min-height:120px;resize:vertical;}
+.pp-load{color:var(--muted,#54503f);} .pp-err{color:#b33;} .pp-ok{color:#1d7a4d;font-weight:600;}
+.pp-sum{background:#fff;border:1px solid var(--border,#e3ded2);border-radius:12px;padding:14px 16px;margin-bottom:16px;font-style:italic;color:#3c3733;}
+.pp-bullet{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--border,#e3ded2);border-radius:12px;padding:14px 16px;margin-bottom:10px;}
+.pp-badge{flex:0 0 auto;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:3px 9px;border-radius:999px;margin-top:2px;}
+.pp-badge.v{background:#e7f6ec;color:#1f8a4c;} .pp-badge.i{background:#fff2d8;color:#9a6a00;}
+.pp-btext{flex:1;line-height:1.5;color:var(--ink,#15110c);}
+.pp-ev{font-size:.82rem;color:var(--muted,#54503f);margin-top:4px;}
+.pp-proof{font-size:.85rem;font-weight:700;color:#1d7a4d;text-decoration:none;}
+.pp-verdict{display:inline-block;font-weight:800;border-radius:10px;padding:8px 14px;margin-bottom:10px;}
+.pp-verdict.v{background:#e7f6ec;color:#1f8a4c;} .pp-verdict.i{background:#fff2d8;color:#9a6a00;} .pp-verdict.x{background:#fdeaea;color:#c0392b;}
+.pp-pane h4{margin:16px 0 6px;color:var(--accent,#9a3b1c);font-size:1rem;}
+.pp-row{background:#fff;border:1px solid var(--border,#e3ded2);border-radius:9px;padding:9px 12px;margin-bottom:7px;font-size:.94rem;}
+.pp-q{background:#fff;border:1px solid var(--border,#e3ded2);border-radius:12px;padding:14px 16px;margin-bottom:12px;}
+.pp-qtext{font-weight:700;margin-bottom:8px;color:var(--ink,#15110c);}
+.pp-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;}
+body.dark-mode .pp-overlay{background:#0e0d0b;} body.dark-mode .pp-head{background:rgba(14,13,11,.96);border-bottom-color:#2a2823;}
+body.dark-mode .pp-sum,body.dark-mode .pp-bullet,body.dark-mode .pp-row,body.dark-mode .pp-q,body.dark-mode .pp-tab{background:#17150f;color:#e8e2d8;border-color:#2a2823;}
+</style>
+<div class="pp-overlay" id="proofPanel">
+    <div class="pp-head">
+        <div><h2>🔬 Proof &amp; Prep</h2><p>Turn your real work into proof — and be ready to defend every line.</p></div>
+        <button class="pp-x" id="ppClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="pp-tabs">
+        <button class="pp-tab active" data-tab="proof">🔬 Proof Resume</button>
+        <button class="pp-tab" data-tab="gate">✅ Should I Apply?</button>
+        <button class="pp-tab" data-tab="road">🎯 Skill Roadmap</button>
+        <button class="pp-tab" data-tab="recruit">🔗 Recruiter Page</button>
+        <button class="pp-tab" data-tab="prep">🎤 Interview Prep</button>
+    </div>
+    <div class="pp-body">
+        <div class="pp-pane" id="ppProof">
+            <h3>Proof-backed resume</h3>
+            <p class="pp-lead">Every bullet linked to the real GitHub project that proves it — with a <b>verified</b> or <b>inferred</b> confidence label. Not AI fluff.</p>
+            <button class="pp-btn" id="ppBuildProof">🔬 Build my proof resume</button>
+            <div id="ppProofOut" style="margin-top:16px;"></div>
+        </div>
+        <div class="pp-pane" id="ppGate" style="display:none;">
+            <h3>Should I apply to this job?</h3>
+            <p class="pp-lead">Paste a job description. Get a truthful verdict based on real fit and evidence — not just keywords.</p>
+            <textarea class="pp-ta" id="ppGateJd" placeholder="Paste the job description here…"></textarea>
+            <button class="pp-btn" id="ppRunGate">✅ Check my fit</button>
+            <div id="ppGateOut" style="margin-top:16px;"></div>
+        </div>
+        <div class="pp-pane" id="ppRoad" style="display:none;">
+            <h3>From "not qualified" to qualified</h3>
+            <p class="pp-lead">Tell us the role you want. Get a concrete 5–7 day project plan to <b>prove</b> the missing skills.</p>
+            <input class="pp-input" id="ppRoadRole" placeholder="Target role (e.g. Junior Frontend Developer)">
+            <button class="pp-btn" id="ppRunRoad">🎯 Build my roadmap</button>
+            <div id="ppRoadOut" style="margin-top:16px;"></div>
+        </div>
+        <div class="pp-pane" id="ppRecruit" style="display:none;">
+            <h3>Recruiter-ready page</h3>
+            <p class="pp-lead">A one-link page tailored to a job — your best projects, live demos, and why you fit. Send it with any application.</p>
+            <input class="pp-input" id="ppRecTitle" placeholder="Job title (e.g. Full Stack Developer)">
+            <input class="pp-input" id="ppRecCo" placeholder="Company (optional)">
+            <textarea class="pp-ta" id="ppRecJd" placeholder="Paste the job description (optional, makes it sharper)…"></textarea>
+            <button class="pp-btn" id="ppRunRecruit">🔗 Generate my recruiter page</button>
+            <div id="ppRecruitOut" style="margin-top:16px;"></div>
+        </div>
+        <div class="pp-pane" id="ppPrep" style="display:none;">
+            <h3>Defend your resume in interviews</h3>
+            <p class="pp-lead">Get the exact questions an interviewer would ask about <i>your</i> resume — then practice and get scored on whether your answer holds up.</p>
+            <button class="pp-btn" id="ppGenQs">🎤 Generate my interview questions</button>
+            <div id="ppPrepOut" style="margin-top:16px;"></div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var PP_API = (location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.protocol === "file:")
+        ? "http://localhost:8000" : "https://resumeforge-backend-1bu3.onrender.com";
+    function $(id) { return document.getElementById(id); }
+    function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+    function ghUser() { return (($("github") || {}).value || "").trim(); }
+    function rtext() { return window.__resumeText || ""; }
+    function meta() { return window.__resumeMeta || {}; }
+    function api(path, body) {
+        return fetch(PP_API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+            .then(function (r) { return r.json(); });
+    }
+    function switchTab(t) {
+        var tabs = document.querySelectorAll(".pp-tab");
+        for (var i = 0; i < tabs.length; i++) tabs[i].classList.toggle("active", tabs[i].getAttribute("data-tab") === t);
+        var map = { proof: "ppProof", gate: "ppGate", road: "ppRoad", recruit: "ppRecruit", prep: "ppPrep" };
+        for (var k in map) { var el = $(map[k]); if (el) el.style.display = (k === t ? "block" : "none"); }
+    }
+    window.openProofPanel = function (tab) {
+        var o = $("proofPanel"); if (o) { o.classList.add("open"); document.body.style.overflow = "hidden"; }
+        if (tab) switchTab(tab);
+    };
+    function closeP() { var o = $("proofPanel"); if (o) { o.classList.remove("open"); document.body.style.overflow = ""; } }
+
+    async function buildProof() {
+        var out = $("ppProofOut");
+        if (!rtext() && !ghUser()) { out.innerHTML = "<p class='pp-err'>Generate a resume (or enter your GitHub) first.</p>"; return; }
+        out.innerHTML = "<p class='pp-load'>Reading your GitHub and building proof…</p>";
+        var d = await api("/proof-resume", { github: ghUser(), resume: rtext(), role: (meta().role || "") });
+        if (!d.success) { out.innerHTML = "<p class='pp-err'>" + esc(d.error || "Could not build.") + "</p>"; return; }
+        var h = "";
+        if (d.proof && d.proof.summary) h += "<div class='pp-sum'>" + esc(d.proof.summary) + "</div>";
+        var bullets = (d.proof && d.proof.bullets) || [];
+        bullets.forEach(function (b) {
+            var conf = (b.confidence || "inferred").toLowerCase();
+            var proj = (d.evidence || []).filter(function (p) { return p.name === b.project; })[0];
+            var link = proj ? (proj.deployed || proj.url) : "";
+            h += "<div class='pp-bullet'><span class='pp-badge " + (conf === "verified" ? "v" : "i") + "'>" + esc(conf) + "</span>"
+                + "<div class='pp-btext'>" + esc(b.text)
+                + (b.evidence ? "<div class='pp-ev'>Proof: " + esc(b.evidence) + "</div>" : "")
+                + (link ? " <a class='pp-proof' href='" + esc(link) + "' target='_blank' rel='noopener'>View proof →</a>" : "")
+                + "</div></div>";
+        });
+        out.innerHTML = h || "<p class='pp-err'>No bullets returned. Try again.</p>";
+    }
+
+    async function runGate() {
+        var jd = ($("ppGateJd").value || "").trim(), out = $("ppGateOut");
+        if (!rtext()) { out.innerHTML = "<p class='pp-err'>Generate a resume first.</p>"; return; }
+        if (!jd) { out.innerHTML = "<p class='pp-err'>Paste a job description first.</p>"; return; }
+        out.innerHTML = "<p class='pp-load'>Checking your fit and evidence…</p>";
+        var d = await api("/quality-gate", { resume: rtext(), job_description: jd });
+        if (!d.success) { out.innerHTML = "<p class='pp-err'>" + esc(d.error) + "</p>"; return; }
+        var g = d.gate || {};
+        var vmap = { apply: ["✅ Apply now", "v"], improve_first: ["✏️ Improve first", "i"], stretch: ["🚀 Stretch — apply if you can show proof", "i"], skip: ["⛔ Low fit — skip this one", "x"] };
+        var vv = vmap[g.verdict] || [esc(g.verdict || "?"), "i"];
+        var h = "<div class='pp-verdict " + vv[1] + "'>" + vv[0] + " · " + (g.fit_percent || 0) + "% fit</div>";
+        if (g.fit_reason) h += "<p>" + esc(g.fit_reason) + "</p>";
+        if ((g.evidence_map || []).length) { h += "<h4>Evidence map</h4>"; g.evidence_map.forEach(function (m) { h += "<div class='pp-row'>" + (m.covered ? "✅" : "⚠️") + " <b>" + esc(m.requirement) + "</b> — " + esc(m.proof || "no proof yet") + "</div>"; }); }
+        if ((g.missing_proof || []).length) h += "<h4>Missing proof</h4><ul>" + g.missing_proof.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
+        if ((g.overstated || []).length) h += "<h4>Looks overstated</h4><ul>" + g.overstated.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
+        if ((g.top_fixes || []).length) h += "<h4>Fix these before applying</h4><ul>" + g.top_fixes.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
+        out.innerHTML = h;
+    }
+
+    async function runRoad() {
+        var role = ($("ppRoadRole").value || "").trim(), out = $("ppRoadOut");
+        if (!rtext()) { out.innerHTML = "<p class='pp-err'>Generate a resume first.</p>"; return; }
+        if (!role) { out.innerHTML = "<p class='pp-err'>Enter a target role.</p>"; return; }
+        out.innerHTML = "<p class='pp-load'>Building your proof-building roadmap…</p>";
+        var d = await api("/skill-roadmap", { resume: rtext(), target_role: role });
+        if (!d.success) { out.innerHTML = "<p class='pp-err'>" + esc(d.error) + "</p>"; return; }
+        var r = d.roadmap || {};
+        var h = "<div class='pp-verdict " + (r.fit_level === "strong" ? "v" : "i") + "'>Fit: " + esc(r.fit_level || "?") + "</div>";
+        if ((r.missing_that_matter || []).length) h += "<h4>What actually matters to add</h4><ul>" + r.missing_that_matter.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
+        if (r.project) h += "<h4>Build this to prove it</h4><p><b>" + esc(r.project.title || "") + "</b> — " + esc(r.project.why || "") + "</p>";
+        if ((r.plan || []).length) { h += "<h4>Your 5–7 day plan</h4>"; r.plan.forEach(function (p) { h += "<div class='pp-row'><b>" + esc(p.day || "") + "</b> — " + esc(p.task || "") + "</div>"; }); }
+        if ((r.jobs_unlocked || []).length) h += "<h4>This unlocks</h4><ul>" + r.jobs_unlocked.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
+        out.innerHTML = h;
+    }
+
+    async function runRecruit() {
+        var out = $("ppRecruitOut");
+        if (!rtext()) { out.innerHTML = "<p class='pp-err'>Generate a resume first.</p>"; return; }
+        out.innerHTML = "<p class='pp-load'>Building your recruiter page…</p>";
+        var d = await api("/recruiter-page", {
+            resume: rtext(), github: ghUser(), name: (rtext().split("\n")[0] || "").trim(),
+            email: meta().email || "", job_title: ($("ppRecTitle").value || "").trim(),
+            company: ($("ppRecCo").value || "").trim(), job_description: ($("ppRecJd").value || "").trim()
+        });
+        if (!d.success) { out.innerHTML = "<p class='pp-err'>" + esc(d.error) + "</p>"; return; }
+        window.__recruiterHtml = d.html || "";
+        out.innerHTML = "<p class='pp-ok'>✅ Your recruiter page is ready.</p><div class='pp-actions'><button class='pp-btn' id='ppRecView'>👁 Preview</button><button class='pp-btn' id='ppRecDl'>📥 Download HTML</button></div>";
+    }
+
+    async function genQuestions() {
+        var out = $("ppPrepOut");
+        if (!rtext()) { out.innerHTML = "<p class='pp-err'>Generate a resume first.</p>"; return; }
+        out.innerHTML = "<p class='pp-load'>Creating questions from your exact resume…</p>";
+        var d = await api("/defense-questions", { resume: rtext() });
+        if (!d.success) { out.innerHTML = "<p class='pp-err'>" + esc(d.error) + "</p>"; return; }
+        window.__defenseQs = d.questions || [];
+        var h = "";
+        (d.questions || []).forEach(function (q, i) {
+            h += "<div class='pp-q'><div class='pp-qtext'>Q" + (i + 1) + ". " + esc(q.question) + "</div>"
+                + "<textarea class='pp-ta' id='ppAns" + i + "' placeholder='Type your answer, then get scored…'></textarea>"
+                + "<button class='pp-btn pp-eval' data-i='" + i + "'>Check my answer</button>"
+                + "<div id='ppEval" + i + "' style='margin-top:8px;'></div></div>";
+        });
+        out.innerHTML = h || "<p class='pp-err'>No questions returned.</p>";
+    }
+    async function evalAnswer(btn) {
+        var i = btn.getAttribute("data-i"), ans = ($("ppAns" + i).value || "").trim(), eo = $("ppEval" + i);
+        if (!ans) { eo.innerHTML = "<span class='pp-err'>Type an answer first.</span>"; return; }
+        eo.innerHTML = "<span class='pp-load'>Scoring…</span>";
+        var q = ((window.__defenseQs || [])[i] || {}).question || "";
+        var d = await api("/evaluate-answer", { question: q, answer: ans, resume: rtext() });
+        if (!d.success) { eo.innerHTML = "<span class='pp-err'>" + esc(d.error) + "</span>"; return; }
+        var ev = d.evaluation || {};
+        var cls = ev.verdict === "strong" ? "v" : (ev.verdict === "weak" ? "x" : "i");
+        eo.innerHTML = "<div class='pp-verdict " + cls + "'>" + esc(ev.verdict || "") + " · " + (ev.score || 0) + "/100</div><p>" + esc(ev.feedback || "") + "</p>"
+            + ((ev.improve || []).length ? "<ul>" + ev.improve.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "");
+    }
+
+    document.addEventListener("click", function (e) {
+        var id = e.target.id;
+        if (id === "openProofBtn") { window.openProofPanel("proof"); return; }
+        if (id === "ppClose") { closeP(); return; }
+        var tb = e.target.closest && e.target.closest(".pp-tab"); if (tb) { switchTab(tb.getAttribute("data-tab")); return; }
+        if (id === "ppBuildProof") { buildProof(); return; }
+        if (id === "ppRunGate") { runGate(); return; }
+        if (id === "ppRunRoad") { runRoad(); return; }
+        if (id === "ppRunRecruit") { runRecruit(); return; }
+        if (id === "ppGenQs") { genQuestions(); return; }
+        if (id === "ppRecView") { var w = window.open(); if (w) { w.document.write(window.__recruiterHtml || ""); w.document.close(); } return; }
+        if (id === "ppRecDl") { var b = new Blob([window.__recruiterHtml || ""], { type: "text/html" }); var a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "Recruiter_Page.html"; document.body.appendChild(a); a.click(); a.remove(); return; }
+        var ev = e.target.closest && e.target.closest(".pp-eval"); if (ev) { evalAnswer(ev); return; }
+    });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") { var o = $("proofPanel"); if (o && o.classList.contains("open")) closeP(); } });
+})();
+</script>
 
 <!-- ===== RESUME HISTORY PANEL ===== -->
 <div class="jobs-overlay" id="resumesOverlay">

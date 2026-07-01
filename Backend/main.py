@@ -96,6 +96,9 @@ RL_PATHS = {
     "/generate", "/chat-edit", "/match-roles", "/tailor-resume",
     "/generate-portfolio", "/generate-cover-letter", "/generate-cv",
     "/upload-linkedin", "/search-jobs", "/save-resume", "/autofill-plan",
+    "/proof-resume", "/defense-questions", "/evaluate-answer",
+    "/skill-roadmap", "/quality-gate", "/recruiter-page",
+    "/evidence/import-github", "/evidence-map", "/evidence-resume",
 }
 RL_MAX = int(os.getenv("RATE_LIMIT_MAX", "30"))      # requests
 RL_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
@@ -304,6 +307,65 @@ def init_db():
             event TEXT NOT NULL,
             path TEXT,
             user_id INTEGER,
+            created_at REAL NOT NULL DEFAULT (strftime('%s','now'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS evidence_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            source_type TEXT NOT NULL,
+            source_url TEXT, source_title TEXT, source_content TEXT,
+            consent_status TEXT DEFAULT 'granted',
+            imported_at REAL NOT NULL DEFAULT (strftime('%s','now'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS evidence_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            source_id INTEGER,
+            category TEXT NOT NULL,
+            title TEXT, description TEXT, structured_tags TEXT,
+            confidence_status TEXT DEFAULT 'ai_inferred',
+            user_approved INTEGER DEFAULT 0,
+            source_excerpt TEXT, source_url TEXT,
+            created_at REAL NOT NULL DEFAULT (strftime('%s','now')),
+            updated_at REAL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS resume_claims (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            resume_id INTEGER,
+            user_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            claim_type TEXT,
+            confidence_status TEXT DEFAULT 'ai_inferred',
+            approved_by_user INTEGER DEFAULT 0,
+            evidence_item_ids TEXT,
+            created_at REAL NOT NULL DEFAULT (strftime('%s','now')),
+            updated_at REAL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS job_evidence_matches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            job_ref TEXT,
+            evidence_item_id INTEGER,
+            matched_requirement TEXT,
+            match_strength TEXT,
+            explanation TEXT,
+            status TEXT,
             created_at REAL NOT NULL DEFAULT (strftime('%s','now'))
         )
         """
@@ -1055,6 +1117,614 @@ def autofill_plan(data: AutofillRequest, authorization: Optional[str] = Header(N
         "total": len(plan),
         "plan": plan,
     }
+
+
+# ============================================================
+# PROOF ENGINE  —  the differentiator
+# Turns real GitHub work into evidence-backed resume bullets. Every bullet is
+# linked to a project, the evidence that supports it, and a confidence label
+# (verified vs inferred). This is the foundation the interview coach, skill
+# roadmap, quality gate, and recruiter page all build on.
+# ============================================================
+
+def _fetch_github_evidence(username, max_projects=4):
+    """Fetch a candidate's top GitHub projects with proof signals: deployed
+    link, languages, topics, stars, and a README excerpt. Best-effort."""
+    out = []
+    username = (username or "").strip()
+    if not username:
+        return out
+    try:
+        r = requests.get(
+            f"https://api.github.com/users/{username}/repos?per_page=100&sort=pushed",
+            timeout=10)
+        repos = r.json() if r.status_code == 200 else []
+        if not isinstance(repos, list):
+            repos = []
+    except Exception as e:
+        print("github evidence fetch error:", str(e))
+        repos = []
+    # Prefer the user's own repos (not forks), ranked by stars then recency.
+    repos = [x for x in repos if isinstance(x, dict) and not x.get("fork")]
+    repos.sort(key=lambda x: (x.get("stargazers_count", 0) or 0, x.get("pushed_at", "") or ""),
+               reverse=True)
+    for repo in repos[:max_projects]:
+        name = repo.get("name") or ""
+        readme = ""
+        for branch in ("main", "master"):
+            try:
+                rr = requests.get(
+                    f"https://raw.githubusercontent.com/{username}/{name}/{branch}/README.md",
+                    timeout=8)
+                if rr.status_code == 200 and rr.text.strip():
+                    readme = rr.text[:2500]
+                    break
+            except Exception:
+                pass
+        out.append({
+            "name": name,
+            "url": repo.get("html_url") or "",
+            "deployed": (repo.get("homepage") or "").strip(),
+            "description": repo.get("description") or "",
+            "language": repo.get("language") or "",
+            "topics": repo.get("topics") or [],
+            "stars": repo.get("stargazers_count", 0) or 0,
+            "readme_excerpt": readme,
+        })
+    return out
+
+
+def _evidence_text(evidence):
+    t = ""
+    for i, p in enumerate(evidence):
+        t += (f"[Project {i+1}] {p['name']} | language: {p['language']} | "
+              f"topics: {', '.join(p.get('topics') or [])} | stars: {p['stars']} | "
+              f"deployed link: {p['deployed'] or 'none'}\n"
+              f"URL: {p['url']}\nDescription: {p['description']}\n"
+              f"README excerpt:\n{(p.get('readme_excerpt') or '')[:1200]}\n\n")
+    return t
+
+
+class ProofResumeRequest(BaseModel):
+    github: str = ""
+    linkedin_data: str = ""
+    resume: str = ""
+    role: str = ""
+
+
+@app.post("/proof-resume")
+def proof_resume(data: ProofResumeRequest):
+    username = (data.github or "").rstrip("/").split("/")[-1].strip()
+    evidence = _fetch_github_evidence(username)
+    if not evidence and not (data.resume or "").strip():
+        return {"success": False,
+                "error": "Add a GitHub username with public projects (or paste a resume) so we can build proof."}
+
+    prompt = f"""You build a PROOF-BACKED resume. Using ONLY the real GitHub evidence and any
+existing resume below, write resume bullets where EVERY bullet is supported by concrete
+evidence. Never invent metrics, employers, or claims the evidence does not support.
+
+EVIDENCE (real GitHub projects):
+{_evidence_text(evidence) or 'No GitHub evidence available.'}
+
+EXISTING RESUME (optional context):
+{(data.resume or '')[:3000]}
+
+TARGET ROLE (optional): {data.role or 'N/A'}
+
+Return ONLY JSON in this exact shape:
+{{
+  "summary": "2-sentence professional summary grounded in the evidence",
+  "projects": [
+    {{"name": "...", "url": "...", "deployed": "...", "tech": ["..."], "what_it_does": "one line"}}
+  ],
+  "bullets": [
+    {{"text": "resume bullet text",
+      "project": "the project name it comes from, or 'general'",
+      "evidence": "what proves it — e.g. README describes it, deployed link exists, language/topics match",
+      "tech": ["..."],
+      "confidence": "verified"}}
+  ]
+}}
+Rules:
+- Use "confidence":"verified" ONLY when the evidence clearly supports the claim (README describes it,
+  a deployed link exists, or the language/topics match). Otherwise use "inferred".
+- Do NOT fabricate user counts, performance numbers, or company names.
+- Produce 6 to 10 bullets. Keep each bullet concise and recruiter-ready."""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("proof-resume error:", str(e))
+        return {"success": False, "error": "Could not build the proof resume right now. Please try again."}
+
+    if not parsed.get("bullets"):
+        return {"success": False, "error": "Could not extract proof-backed bullets. Please try again."}
+
+    return {"success": True, "evidence": evidence, "proof": parsed}
+
+
+# ---- #2 Resume Defense Coach: questions + answer evaluation ----
+class DefenseRequest(BaseModel):
+    resume: str = ""
+    job_description: str = ""
+
+
+@app.post("/defense-questions")
+def defense_questions(data: DefenseRequest):
+    resume = (data.resume or "").strip()
+    if not resume:
+        return {"success": False, "error": "Generate or paste a resume first."}
+    prompt = f"""You are an interviewer. From the candidate's resume (and job description if given),
+create likely interview questions that probe whether the candidate can DEFEND each important claim.
+RESUME:
+{resume[:4000]}
+JOB DESCRIPTION (optional):
+{(data.job_description or '')[:2000]}
+Return ONLY JSON:
+{{"questions":[{{"question":"...","targets":"which resume bullet/skill this probes","ideal_points":["what a strong answer covers"]}}]}}
+Make 8-10 questions SPECIFIC to this resume: architecture, why they chose a tool, the exact technical
+challenge, their personal contribution, how a result was measured, and what they'd improve next."""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("defense error:", str(e))
+        return {"success": False, "error": "Could not generate questions. Please try again."}
+    if not parsed.get("questions"):
+        return {"success": False, "error": "Could not generate questions. Please try again."}
+    return {"success": True, "questions": parsed["questions"]}
+
+
+class AnswerEvalRequest(BaseModel):
+    question: str = ""
+    answer: str = ""
+    resume: str = ""
+
+
+@app.post("/evaluate-answer")
+def evaluate_answer(data: AnswerEvalRequest):
+    if not (data.answer or "").strip():
+        return {"success": False, "error": "No answer to evaluate."}
+    prompt = f"""Evaluate this interview answer for truthfulness and quality. Does it match what the
+resume claims? Is it specific and credible, or vague/exaggerated?
+QUESTION: {data.question}
+CANDIDATE ANSWER: {(data.answer or '')[:2000]}
+RESUME CONTEXT: {(data.resume or '')[:2000]}
+Return ONLY JSON:
+{{"score":0-100,"verdict":"strong|okay|weak","matches_resume":true,"feedback":"2-3 sentences","improve":["specific tip"]}}"""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("eval error:", str(e))
+        return {"success": False, "error": "Could not evaluate the answer. Please try again."}
+    return {"success": True, "evaluation": parsed}
+
+
+# ---- #3 "Not Qualified -> Qualified" proof-building roadmap ----
+class RoadmapRequest(BaseModel):
+    resume: str = ""
+    target_role: str = ""
+
+
+@app.post("/skill-roadmap")
+def skill_roadmap(data: RoadmapRequest):
+    if not (data.resume or "").strip() or not (data.target_role or "").strip():
+        return {"success": False, "error": "Provide your resume and a target role."}
+    prompt = f"""The candidate wants the TARGET ROLE below. Give a concrete PROOF-BUILDING roadmap to
+close the gap — not just "you're missing X", but exactly what to build to prove it.
+RESUME:
+{data.resume[:3500]}
+TARGET ROLE: {data.target_role}
+Return ONLY JSON:
+{{"fit_level":"strong|partial|stretch","current_strengths":["..."],"missing_that_matter":["..."],
+"project":{{"title":"a small portfolio project/extension that proves the missing skills","why":"why it proves them"}},
+"plan":[{{"day":"Day 1","task":"..."}}],"jobs_unlocked":["role types that open up once done"]}}
+Make the plan 5-7 days, practical, and buildable on GitHub with a free deploy (Vercel/Render)."""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("roadmap error:", str(e))
+        return {"success": False, "error": "Could not build the roadmap. Please try again."}
+    if not parsed:
+        return {"success": False, "error": "Could not build the roadmap. Please try again."}
+    return {"success": True, "roadmap": parsed}
+
+
+# ---- #4 Application Quality Gate: apply / improve / skip ----
+class QualityGateRequest(BaseModel):
+    resume: str = ""
+    job_description: str = ""
+
+
+@app.post("/quality-gate")
+def quality_gate(data: QualityGateRequest):
+    if not (data.resume or "").strip() or not (data.job_description or "").strip():
+        return {"success": False, "error": "Provide your resume and the job description."}
+    prompt = f"""You are an application QUALITY GATE. Decide if this candidate should apply to THIS job,
+based on real fit and evidence — not just keyword matching.
+RESUME:
+{data.resume[:3500]}
+JOB DESCRIPTION:
+{data.job_description[:2500]}
+Return ONLY JSON:
+{{"verdict":"apply|improve_first|stretch|skip","fit_percent":0-100,"fit_reason":"short why",
+"evidence_map":[{{"requirement":"...","covered":true,"proof":"what in the resume supports it"}}],
+"missing_proof":["..."],"overstated":["claims that look exaggerated vs the evidence"],
+"top_fixes":["the 2-3 most important changes to make before applying"]}}"""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("gate error:", str(e))
+        return {"success": False, "error": "Could not analyze the application. Please try again."}
+    if not parsed:
+        return {"success": False, "error": "Could not analyze the application. Please try again."}
+    return {"success": True, "gate": parsed}
+
+
+# ---- #5 Recruiter-ready targeted portfolio page ----
+class RecruiterPageRequest(BaseModel):
+    resume: str = ""
+    github: str = ""
+    name: str = ""
+    email: str = ""
+    job_description: str = ""
+    job_title: str = ""
+    company: str = ""
+
+
+@app.post("/recruiter-page")
+def recruiter_page(data: RecruiterPageRequest):
+    resume = (data.resume or "").strip()
+    if not resume:
+        return {"success": False, "error": "Generate a resume first."}
+    username = (data.github or "").rstrip("/").split("/")[-1].strip()
+    evidence = _fetch_github_evidence(username, max_projects=3) if username else []
+    prompt = f"""Create a compact, modern, single-file HTML RECRUITER PAGE targeted to a specific job.
+Include: a short "Why I fit this role" intro, the top 3 relevant projects (each with its live demo link
+and GitHub link), a tech-stack section, and a clear contact line. Clean, professional, mobile-responsive.
+CANDIDATE: {data.name or 'Candidate'} | {data.email or ''}
+TARGET: {data.job_title or 'the role'} at {data.company or 'the company'}
+JOB DESCRIPTION:
+{(data.job_description or '')[:1800]}
+REAL GITHUB PROJECTS (use THESE links exactly, do not invent):
+{_evidence_text(evidence) or 'N/A'}
+RESUME:
+{resume[:2500]}
+Return ONLY a complete HTML document (no markdown code fences)."""
+    try:
+        resp = model.generate_content(prompt)
+        html_doc = _strip_code_fences(resp.text or "")
+    except Exception as e:
+        print("recruiter page error:", str(e))
+        return {"success": False, "error": "Could not build the page. Please try again."}
+    if "<" not in html_doc:
+        return {"success": False, "error": "Could not build the page. Please try again."}
+    return {"success": True, "html": html_doc, "projects": evidence}
+
+
+# ============================================================
+# CAREER EVIDENCE VAULT  (Differentiator #1 — persistent + reviewable)
+# Nothing counts toward a resume until the user approves it; every generated
+# bullet carries provenance to approved evidence; export is blocked if any
+# claim lacks approved support. All endpoints are strictly user-scoped.
+# ============================================================
+
+_NOW = "now()" if USE_PG else "strftime('%s','now')"
+_TRUE = "TRUE" if USE_PG else "1"
+_FALSE = "FALSE" if USE_PG else "0"
+
+
+def db_insert(conn, sql, params=()):
+    cur = conn.cursor()
+    if USE_PG:
+        cur.execute(_q(sql + " RETURNING id"), params)
+        rid = cur.fetchone()["id"]
+    else:
+        cur.execute(_q(sql), params)
+        rid = cur.lastrowid
+    cur.close()
+    return rid
+
+
+class ImportGithubRequest(BaseModel):
+    github: str = ""
+
+
+class EvidenceUpdateRequest(BaseModel):
+    id: int
+    action: str = "approve"   # approve | reject | edit
+    title: str = ""
+    description: str = ""
+
+
+class EvidenceAddRequest(BaseModel):
+    category: str = "project"
+    title: str = ""
+    description: str = ""
+    tags: List[str] = []
+
+
+class EvidenceDeleteRequest(BaseModel):
+    id: int
+
+
+class EvidenceMapRequest(BaseModel):
+    job_description: str = ""
+
+
+class EvidenceResumeRequest(BaseModel):
+    job_description: str = ""
+    role: str = ""
+
+
+class ExportCheckRequest(BaseModel):
+    claims: List[dict] = []   # [{text, evidence_item_ids: [...]}]
+
+
+@app.post("/evidence/import-github")
+def evidence_import_github(data: ImportGithubRequest, authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    username = (data.github or "").rstrip("/").split("/")[-1].strip()
+    projects = _fetch_github_evidence(username, max_projects=6)
+    if not projects:
+        return {"success": False, "error": "No public GitHub projects found for that username."}
+    conn = get_db()
+    created = 0
+    try:
+        for p in projects:
+            src_id = db_insert(conn,
+                "INSERT INTO evidence_sources (user_id, source_type, source_url, source_title, source_content) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (user["id"], "github_repository", p.get("url"), p.get("name"),
+                 (p.get("readme_excerpt") or "")[:2000]))
+            tags = list(p.get("topics") or []) + ([p["language"]] if p.get("language") else [])
+            db_exec(conn,
+                "INSERT INTO evidence_items (user_id, source_id, category, title, description, "
+                "structured_tags, confidence_status, user_approved, source_excerpt, source_url) "
+                f"VALUES (?, ?, 'project', ?, ?, ?, 'ai_inferred', {_FALSE}, ?, ?)",
+                (user["id"], src_id, p.get("name"), p.get("description") or "",
+                 _json.dumps(tags), (p.get("readme_excerpt") or "")[:600],
+                 p.get("deployed") or p.get("url")))
+            created += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True, "imported": created}
+
+
+@app.get("/evidence")
+def evidence_list(authorization: Optional[str] = Header(None),
+                  status: Optional[str] = None, category: Optional[str] = None):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    conn = get_db()
+    try:
+        rows = db_all(conn,
+            "SELECT id, source_id, category, title, description, structured_tags, confidence_status, "
+            "user_approved, source_excerpt, source_url, created_at FROM evidence_items "
+            "WHERE user_id = ? ORDER BY created_at DESC", (user["id"],))
+    finally:
+        conn.close()
+    items = []
+    for r in rows:
+        d = dict(r)
+        d["user_approved"] = bool(d.get("user_approved"))
+        try:
+            d["tags"] = _json.loads(d.get("structured_tags") or "[]")
+        except Exception:
+            d["tags"] = []
+        items.append(d)
+    if status:
+        items = [i for i in items if i.get("confidence_status") == status]
+    if category:
+        items = [i for i in items if i.get("category") == category]
+    return {"success": True, "evidence": items}
+
+
+@app.post("/evidence/update")
+def evidence_update(data: EvidenceUpdateRequest, authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    conn = get_db()
+    try:
+        row = db_one(conn, "SELECT id FROM evidence_items WHERE id = ? AND user_id = ?",
+                     (data.id, user["id"]))
+        if not row:
+            return {"success": False, "error": "Not found."}   # can't touch another user's item
+        if data.action == "approve":
+            db_exec(conn, f"UPDATE evidence_items SET user_approved={_TRUE}, confidence_status='user_confirmed', "
+                          f"updated_at={_NOW} WHERE id=? AND user_id=?", (data.id, user["id"]))
+        elif data.action == "reject":
+            db_exec(conn, f"UPDATE evidence_items SET user_approved={_FALSE}, updated_at={_NOW} "
+                          f"WHERE id=? AND user_id=?", (data.id, user["id"]))
+        elif data.action == "edit":
+            db_exec(conn, f"UPDATE evidence_items SET title=?, description=?, confidence_status='user_confirmed', "
+                          f"updated_at={_NOW} WHERE id=? AND user_id=?",
+                    (data.title, data.description, data.id, user["id"]))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True}
+
+
+@app.post("/evidence/add")
+def evidence_add(data: EvidenceAddRequest, authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    conn = get_db()
+    try:
+        src_id = db_insert(conn,
+            "INSERT INTO evidence_sources (user_id, source_type, source_title) VALUES (?, 'user_entry', ?)",
+            (user["id"], data.title))
+        item_id = db_insert(conn,
+            "INSERT INTO evidence_items (user_id, source_id, category, title, description, structured_tags, "
+            f"confidence_status, user_approved) VALUES (?, ?, ?, ?, ?, ?, 'user_confirmed', {_TRUE})",
+            (user["id"], src_id, data.category or "project", data.title, data.description,
+             _json.dumps(data.tags or [])))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True, "id": item_id}
+
+
+@app.post("/evidence/delete")
+def evidence_delete(data: EvidenceDeleteRequest, authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    conn = get_db()
+    try:
+        db_exec(conn, "DELETE FROM evidence_items WHERE id = ? AND user_id = ?", (data.id, user["id"]))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True}
+
+
+@app.post("/evidence/delete-github")
+def evidence_delete_github(authorization: Optional[str] = Header(None)):
+    """Privacy: remove all imported GitHub evidence for this user."""
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    conn = get_db()
+    try:
+        db_exec(conn,
+            "DELETE FROM evidence_items WHERE user_id = ? AND source_id IN "
+            "(SELECT id FROM evidence_sources WHERE user_id = ? AND source_type = 'github_repository')",
+            (user["id"], user["id"]))
+        db_exec(conn, "DELETE FROM evidence_sources WHERE user_id = ? AND source_type = 'github_repository'",
+                (user["id"],))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True}
+
+
+def _approved_evidence(user_id):
+    conn = get_db()
+    try:
+        rows = db_all(conn,
+            f"SELECT id, category, title, description, structured_tags, source_url FROM evidence_items "
+            f"WHERE user_id = ? AND user_approved = {_TRUE} ORDER BY id", (user_id,))
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.post("/evidence-map")
+def evidence_map(data: EvidenceMapRequest, authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    jd = (data.job_description or "").strip()
+    if not jd:
+        return {"success": False, "error": "Paste a job description."}
+    approved = _approved_evidence(user["id"])
+    ev_text = "\n".join(f"[{e['id']}] {e.get('title')}: {e.get('description')}" for e in approved) or "None approved yet."
+    prompt = f"""Parse the JOB DESCRIPTION into concrete requirements, then match each to the candidate's
+APPROVED evidence only. Do NOT invent capabilities. If nothing supports a requirement, mark it missing.
+JOB DESCRIPTION:
+{jd[:2500]}
+APPROVED EVIDENCE (id: title: description):
+{ev_text}
+Return ONLY JSON:
+{{"overall_fit":"short honest note (not a hiring probability)",
+"requirements":[{{"requirement":"...","status":"supported|partial|missing|stretch",
+"evidence_item_ids":[ids that support it],"explanation":"...","action_if_missing":"..."}}]}}"""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("evidence-map error:", str(e))
+        return {"success": False, "error": "Could not build the evidence map. Please try again."}
+    return {"success": True, "map": parsed, "approved_count": len(approved)}
+
+
+@app.post("/evidence-resume")
+def evidence_resume(data: EvidenceResumeRequest, authorization: Optional[str] = Header(None)):
+    """Generate resume bullets from APPROVED evidence ONLY, storing each bullet's
+    provenance (which evidence items support it)."""
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    approved = _approved_evidence(user["id"])
+    if not approved:
+        return {"success": False,
+                "error": "Approve some evidence in your vault first — bullets are built only from approved evidence."}
+    ev_text = "\n".join(
+        f"[{e['id']}] ({e.get('category')}) {e.get('title')}: {e.get('description')} | tags: {e.get('structured_tags')}"
+        for e in approved)
+    prompt = f"""Write resume bullets using ONLY the APPROVED evidence below. Every bullet MUST reference
+the evidence item id(s) it is based on. Do NOT fabricate metrics, users, revenue, scale, titles, or
+outcomes not present in the evidence. Use precise verbs (built, implemented, contributed to, used) only
+when supported.
+TARGET ROLE: {data.role or 'N/A'}
+JOB DESCRIPTION (optional): {(data.job_description or '')[:1500]}
+APPROVED EVIDENCE:
+{ev_text}
+Return ONLY JSON:
+{{"bullets":[{{"text":"...","evidence_item_ids":[ids],"claim_type":"project|skill|achievement",
+"confidence_status":"verified|user_confirmed"}}]}}"""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("evidence-resume error:", str(e))
+        return {"success": False, "error": "Could not generate. Please try again."}
+    bullets = parsed.get("bullets") or []
+    approved_ids = {e["id"] for e in approved}
+    # Keep only bullets whose evidence is real + approved, then persist provenance.
+    clean = []
+    conn = get_db()
+    try:
+        for b in bullets:
+            ids = [int(x) for x in (b.get("evidence_item_ids") or []) if str(x).isdigit() and int(x) in approved_ids]
+            if not ids:
+                continue   # a bullet with no approved evidence is dropped
+            db_exec(conn,
+                "INSERT INTO resume_claims (user_id, text, claim_type, confidence_status, "
+                f"approved_by_user, evidence_item_ids) VALUES (?, ?, ?, ?, {_TRUE}, ?)",
+                (user["id"], b.get("text", ""), b.get("claim_type", ""),
+                 b.get("confidence_status", "user_confirmed"), _json.dumps(ids)))
+            b["evidence_item_ids"] = ids
+            clean.append(b)
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True, "bullets": clean, "evidence": approved}
+
+
+@app.post("/resume/export-check")
+def export_check(data: ExportCheckRequest, authorization: Optional[str] = Header(None)):
+    """H1: a bullet cannot be exported unless it is backed by the user's own
+    APPROVED evidence. Returns the list of unsupported bullets (export blocked)."""
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    conn = get_db()
+    try:
+        rows = db_all(conn, f"SELECT id FROM evidence_items WHERE user_id = ? AND user_approved = {_TRUE}",
+                      (user["id"],))
+    finally:
+        conn.close()
+    approved = {r["id"] for r in rows}
+    unsupported = []
+    for c in (data.claims or []):
+        ids = c.get("evidence_item_ids") or []
+        ok = any(str(x).isdigit() and int(x) in approved for x in ids)
+        if not ok:
+            unsupported.append(c.get("text", ""))
+    return {"success": True, "ok": len(unsupported) == 0, "unsupported": unsupported}
 
 
 # ============================================================
