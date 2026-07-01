@@ -50,3 +50,11 @@ Backend/requirements_clean.txt
 # Local test outputs
 *_Professional_Resume.pdf
 *_Resume.txt
+
+# Test suite + PDF-generation artifacts (pytest / local runs)
+Backend/resume_*.pdf
+Backend/tailored_*.pdf
+Backend/cover_letter*.pdf
+Backend/ResumeForge_*.pdf
+rf_test_*.db
+.pytest_cache/

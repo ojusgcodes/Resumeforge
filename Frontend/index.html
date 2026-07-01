@@ -2190,6 +2190,7 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
 
         <div class="nav-buttons">
             <button class="nav-track-btn" id="navResumesBtn" title="My Resumes">📄 My Resumes</button>
+            <button class="nav-track-btn" id="navVaultBtn" title="Career Evidence Vault">🗄️ Vault</button>
             <button class="nav-track-btn" id="navTrackerBtn" title="My Applications">📋 My Applications</button>
             <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark / light mode">🌙</button>
             <button class="login-btn" id="loginBtn">Login</button>
@@ -2686,6 +2687,7 @@ document.getElementById("result").innerHTML = `
     </div>
     <button id="openApplyHubBtn" class="hub-open-btn">🚀 Apply to Jobs — find roles &amp; apply</button>
     <button id="openProofBtn" class="hub-open-btn" style="background:#1d7a4d !important;margin-top:10px;">🔬 Proof &amp; Prep — make every claim defensible</button>
+    <button id="openVaultBtn" class="hub-open-btn" style="background:#6b4a2b !important;margin-top:10px;">🗄️ Career Evidence Vault — proof-backed, job-ready resumes</button>
     </div>
 
     <div class="result-tools">
@@ -4539,6 +4541,548 @@ body.dark-mode .pp-sum,body.dark-mode .pp-bullet,body.dark-mode .pp-row,body.dar
         var ev = e.target.closest && e.target.closest(".pp-eval"); if (ev) { evalAnswer(ev); return; }
     });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") { var o = $("proofPanel"); if (o && o.classList.contains("open")) closeP(); } });
+})();
+</script>
+
+<!-- ===== CAREER EVIDENCE VAULT PANEL (Differentiator #1) ===== -->
+<style>
+.vlt-import-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;}
+.vlt-btn-ghost{background:#fff !important;color:var(--accent,#9a3b1c) !important;border:1px solid var(--border,#e3ded2) !important;}
+.vlt-manual{background:#fff;border:1px solid var(--border,#e3ded2);border-radius:12px;padding:14px;margin:10px 0;}
+.vlt-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;}
+.vlt-search{flex:2 1 220px;margin-bottom:0 !important;}
+.vlt-filter{flex:1 1 130px;margin-bottom:0 !important;}
+.vlt-card{background:#fff;border:1px solid var(--border,#e3ded2);border-radius:14px;padding:16px;margin-bottom:12px;}
+.vlt-card-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.vlt-cat{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:#8a6a4a;border-radius:20px;padding:3px 9px;}
+.vlt-cat.sm{background:#e8ddc9;color:#6b4a2b;}
+.vlt-pill{font-size:.7rem;font-weight:700;border-radius:20px;padding:3px 9px;}
+.vlt-pill.ok{background:#e7f6ec;color:#1f8a4c;} .vlt-pill.warn{background:#fff2d8;color:#9a6a00;}
+.vlt-title{margin:.5rem 0 .3rem;font-size:1.08rem;color:var(--ink,#15110c);}
+.vlt-desc{margin:.2rem 0 .5rem;color:var(--muted,#54503f);white-space:pre-wrap;font-size:.94rem;}
+.vlt-chips{margin:.2rem 0 .5rem;}
+.vlt-chip{display:inline-block;background:#f0e8d8;color:#6b4a2b;border-radius:20px;padding:2px 9px;font-size:.76rem;margin:0 6px 6px 0;}
+.vlt-src{font-size:.85rem;font-weight:700;color:var(--accent,#9a3b1c);text-decoration:none;}
+.vlt-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.vlt-a{border:1px solid var(--border,#e3ded2);background:#fff;color:var(--ink,#15110c);border-radius:8px;padding:7px 12px;font-size:.86rem;font-weight:600;cursor:pointer;}
+.vlt-a.primary{background:#1d7a4d;color:#fff;border-color:#1d7a4d;}
+.vlt-a.danger{color:#b33;}
+.vlt-review{background:#faf6ee;border:1px dashed var(--border,#e3ded2);border-radius:10px;padding:12px;margin-top:10px;}
+.vlt-review-t{font-weight:700;margin-bottom:8px;color:var(--accent,#9a3b1c);}
+.vlt-two{display:flex;gap:8px;flex-wrap:wrap;} .vlt-two>*{flex:1 1 140px;}
+.vlt-note{font-size:.8rem;color:var(--muted,#54503f);margin:6px 0;}
+.vlt-empty{text-align:center;padding:40px 16px;color:var(--muted,#54503f);}
+.vlt-empty-ic{font-size:2.4rem;margin-bottom:8px;}
+.vlt-danger{margin-top:20px;text-align:right;}
+.vlt-link-danger{background:none;border:0;color:#b33;cursor:pointer;font-size:.85rem;text-decoration:underline;}
+.vlt-callout{background:#fff;border-left:4px solid var(--accent,#9a3b1c);border-radius:8px;padding:12px 14px;margin-bottom:12px;color:var(--ink,#15110c);}
+.vlt-callout.bad{border-left-color:#c0392b;}
+.vlt-req{background:#fff;border:1px solid var(--border,#e3ded2);border-radius:10px;padding:11px 13px;margin-bottom:8px;border-left:4px solid #ccc;}
+.vlt-req.ok{border-left-color:#1f8a4c;} .vlt-req.warn{border-left-color:#e0a100;} .vlt-req.bad{border-left-color:#c0392b;}
+.vlt-req-top{font-size:.96rem;}
+.vlt-status{font-size:.68rem;text-transform:uppercase;border-radius:20px;padding:2px 8px;margin-left:6px;}
+.vlt-status.ok{background:#e7f6ec;color:#1f8a4c;} .vlt-status.warn{background:#fff2d8;color:#9a6a00;} .vlt-status.bad{background:#fdeaea;color:#c0392b;}
+.vlt-req-x{font-size:.86rem;color:var(--muted,#54503f);margin-top:4px;}
+.vlt-req-ev{font-size:.84rem;color:#1f8a4c;margin-top:4px;} .vlt-req-act{font-size:.84rem;color:#9a6a00;margin-top:4px;}
+.vlt-why{margin-top:6px;}
+.vlt-why-btn{background:none;border:0;color:var(--accent,#9a3b1c);cursor:pointer;font-size:.82rem;font-weight:700;padding:0;}
+.vlt-why-body{margin-top:8px;background:#faf6ee;border:1px solid var(--border,#e3ded2);border-radius:8px;padding:10px;}
+.vlt-why-item{margin-bottom:8px;} .vlt-why-x{font-size:.86rem;color:var(--muted,#54503f);margin:3px 0;}
+.vlt-why-req{font-size:.82rem;color:#1f8a4c;}
+.vlt-check{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--border,#e3ded2);border-radius:9px;padding:10px 12px;margin-bottom:7px;cursor:pointer;}
+.vlt-share-head{font-weight:700;margin-bottom:8px;}
+.vlt-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:#15110c;color:#fff;padding:11px 18px;border-radius:10px;opacity:0;pointer-events:none;transition:.25s;z-index:400;font-size:.92rem;max-width:90%;text-align:center;}
+.vlt-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+body.dark-mode .vlt-card,body.dark-mode .vlt-manual,body.dark-mode .vlt-req,body.dark-mode .vlt-callout,body.dark-mode .vlt-check,body.dark-mode .vlt-a{background:#17150f;color:#e8e2d8;border-color:#2a2823;}
+body.dark-mode .vlt-review,body.dark-mode .vlt-why-body{background:#1b1811;border-color:#2a2823;}
+</style>
+<div class="pp-overlay" id="vaultPanel">
+    <div class="pp-head">
+        <div><h2>🗄️ Career Evidence Vault</h2><p>Every resume claim, backed by proof you approve.</p></div>
+        <button class="pp-x" id="vClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="pp-tabs">
+        <button class="pp-tab active" data-vtab="vault">🗂️ My Vault</button>
+        <button class="pp-tab" data-vtab="review">📝 Review Projects</button>
+        <button class="pp-tab" data-vtab="match">🎯 Job Match</button>
+        <button class="pp-tab" data-vtab="build">📄 Build Resume</button>
+        <button class="pp-tab" data-vtab="share">🔗 Share Proof</button>
+    </div>
+    <div class="pp-body">
+        <div id="vGate" style="display:none;">
+            <div class="vlt-empty"><div class="vlt-empty-ic">🔒</div>
+            <p><b>Log in to use your Career Evidence Vault.</b></p>
+            <p class="pp-lead">Your projects and proof are stored privately in your account.</p>
+            <button class="pp-btn" id="vGateLogin">Log in / Sign up</button></div>
+        </div>
+        <div id="vApp">
+            <div class="pp-pane" id="vVault">
+                <h3>My Vault</h3>
+                <p class="pp-lead">Import your real work, then confirm what's true. Only <b>approved</b> items are used in resumes and proof pages. AI suggestions always need your approval.</p>
+                <div class="vlt-import">
+                    <input class="pp-input" id="vGh" placeholder="Your GitHub username (public repos)">
+                    <div class="vlt-import-btns">
+                        <button class="pp-btn" id="vImport">⬇️ Import from GitHub</button>
+                        <button class="pp-btn vlt-btn-ghost" id="vConnectGh">🔗 Connect GitHub (sign in)</button>
+                        <button class="pp-btn vlt-btn-ghost" id="vAddToggle">➕ Add manually</button>
+                    </div>
+                </div>
+                <div class="vlt-manual" id="vManualForm" style="display:none;">
+                    <input class="pp-input" id="vmTitle" placeholder="Title (e.g. Inventory Management App)">
+                    <select class="pp-input" id="vmCat">
+                        <option value="project">Project</option>
+                        <option value="skill">Skill</option>
+                        <option value="achievement">Achievement</option>
+                        <option value="technical_decision">Technical decision</option>
+                        <option value="deployment">Deployment</option>
+                        <option value="contribution">Contribution</option>
+                        <option value="metric">Metric</option>
+                        <option value="education">Education</option>
+                        <option value="experience">Experience</option>
+                    </select>
+                    <textarea class="pp-ta" id="vmDesc" placeholder="Describe what YOU built, in your own words…"></textarea>
+                    <input class="pp-input" id="vmTags" placeholder="Tags, comma separated (e.g. React, Node, Postgres)">
+                    <button class="pp-btn" id="vmSave">Save to vault</button>
+                </div>
+                <div class="vlt-toolbar">
+                    <input class="pp-input vlt-search" id="vSearch" placeholder="🔎 Search title, description, skill…">
+                    <select class="pp-input vlt-filter" id="vFStatus">
+                        <option value="">All confidence</option>
+                        <option value="verified">Verified</option>
+                        <option value="user_confirmed">You confirmed</option>
+                        <option value="ai_inferred">AI suggestion</option>
+                    </select>
+                    <select class="pp-input vlt-filter" id="vFCat">
+                        <option value="">All types</option>
+                        <option value="project">Project</option>
+                        <option value="skill">Skill</option>
+                        <option value="achievement">Achievement</option>
+                        <option value="technical_decision">Technical decision</option>
+                        <option value="deployment">Deployment</option>
+                        <option value="contribution">Contribution</option>
+                        <option value="metric">Metric</option>
+                        <option value="education">Education</option>
+                        <option value="experience">Experience</option>
+                    </select>
+                    <select class="pp-input vlt-filter" id="vFApproved">
+                        <option value="">Approved &amp; pending</option>
+                        <option value="1">Approved only</option>
+                        <option value="0">Needs review</option>
+                    </select>
+                </div>
+                <div id="vList"></div>
+                <div class="vlt-danger"><button class="vlt-link-danger" id="vDelGh">🗑 Delete all imported GitHub data</button></div>
+            </div>
+            <div class="pp-pane" id="vReview" style="display:none;">
+                <h3>Review your projects</h3>
+                <p class="pp-lead">Add the details only you know — that's what turns an AI guess into real proof. We never invent numbers; a metric appears only if you type it.</p>
+                <div id="vReviewList"></div>
+            </div>
+            <div class="pp-pane" id="vMatch" style="display:none;">
+                <h3>Job match</h3>
+                <p class="pp-lead">Paste a job description. We map each requirement to your approved evidence — and show what's missing.</p>
+                <textarea class="pp-ta" id="vJd" placeholder="Paste the job description…"></textarea>
+                <button class="pp-btn" id="vRunMatch">🎯 Build my evidence map</button>
+                <div id="vMatchOut" style="margin-top:14px;"></div>
+            </div>
+            <div class="pp-pane" id="vBuild" style="display:none;">
+                <h3>Build a proof-backed resume</h3>
+                <p class="pp-lead">Bullets are written from your <b>approved</b> evidence only. Unbacked claims are dropped automatically, and export is blocked until every bullet has proof.</p>
+                <input class="pp-input" id="vRole" placeholder="Target role (optional)">
+                <textarea class="pp-ta" id="vBuildJd" placeholder="Target job description (optional — sharpens the bullets)…"></textarea>
+                <button class="pp-btn" id="vRunBuild">✍️ Generate bullets from approved evidence</button>
+                <div id="vBuildOut" style="margin-top:14px;"></div>
+            </div>
+            <div class="pp-pane" id="vShare" style="display:none;">
+                <h3>Share a proof page</h3>
+                <p class="pp-lead">A private page with only the projects you choose. Nothing is shared unless you pick it — and it never exposes your imported source code.</p>
+                <input class="pp-input" id="vShareName" placeholder="Your name (shown on the page)">
+                <input class="pp-input" id="vShareHeadline" placeholder="One line: why you fit (optional)">
+                <input class="pp-input" id="vShareContact" placeholder="Contact to show — email or link (optional)">
+                <div id="vShareList"></div>
+                <button class="pp-btn" id="vRunShare">🔗 Generate proof page</button>
+                <div id="vShareOut" style="margin-top:14px;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="vlt-toast" id="vToast"></div>
+</div>
+<script>
+(function () {
+    var V_API = (location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.protocol === "file:")
+        ? "http://localhost:8000" : "https://resumeforge-backend-1bu3.onrender.com";
+    function $(id) { return document.getElementById(id); }
+    function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+    function tok() { try { return localStorage.getItem("rf_token"); } catch (e) { return null; } }
+
+    var CACHE = [];       // all evidence items for this user
+    var LAST_MAP = null;  // last evidence-map result
+    var LAST_BUILD = null;// last build result {bullets, evidence, dropped_unsupported}
+    var activeTab = "vault";
+
+    function api(path, body) {
+        var t = tok(), opts = { method: "POST", headers: { "Content-Type": "application/json" } };
+        if (t) opts.headers["Authorization"] = "Bearer " + t;
+        if (body !== undefined) opts.body = JSON.stringify(body);
+        return fetch(V_API + path, opts).then(function (r) { return r.json(); })
+            .catch(function () { return { success: false, error: "Network error. Please try again." }; });
+    }
+    function apiGet(path) {
+        var t = tok();
+        return fetch(V_API + path, { headers: t ? { "Authorization": "Bearer " + t } : {} })
+            .then(function (r) { return r.json(); })
+            .catch(function () { return { success: false, error: "Network error." }; });
+    }
+    function toast(msg) { var t = $("vToast"); if (!t) return; t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("show"); }, 2800); }
+    function itemById(id) { for (var i = 0; i < CACHE.length; i++) { if (String(CACHE[i].id) === String(id)) return CACHE[i]; } return null; }
+
+    function confMeta(item) {
+        var s = item.confidence_status;
+        if (s === "verified") return { cls: "v", label: "Verified" };
+        if (s === "user_confirmed") return { cls: "v", label: "You confirmed" };
+        return { cls: "i", label: "AI suggestion" };
+    }
+
+    function reviewForm(item) {
+        return "<div class='vlt-review'>"
+            + "<div class='vlt-review-t'>Add the details only you know</div>"
+            + "<textarea class='pp-ta' data-f='contribution' placeholder='What did YOU personally build?'></textarea>"
+            + "<div class='vlt-two'>"
+            + "<select class='pp-input' data-f='solo'><option value=''>Solo or team?</option><option value='solo'>Solo</option><option value='team'>Team</option></select>"
+            + "<input class='pp-input' data-f='demo' placeholder='Live demo / screenshot URL (optional)'>"
+            + "</div>"
+            + "<input class='pp-input' data-f='problem' placeholder='What problem does it solve?'>"
+            + "<input class='pp-input' data-f='metric' placeholder='A REAL metric you can prove (optional)'>"
+            + "<div class='vlt-note'>We never invent numbers. A metric is included only if you type it here.</div>"
+            + "<div class='pp-actions'><button class='pp-btn' data-act='save-review' data-id='" + item.id + "'>Save &amp; approve</button>"
+            + "<button class='vlt-a' data-act='cancel-slot' data-id='" + item.id + "'>Cancel</button></div>"
+            + "</div>";
+    }
+    function editForm(item) {
+        return "<div class='vlt-review'>"
+            + "<div class='vlt-review-t'>Edit this item</div>"
+            + "<input class='pp-input' data-f='title' value='" + esc(item.title || "") + "'>"
+            + "<textarea class='pp-ta' data-f='description'>" + esc(item.description || "") + "</textarea>"
+            + "<div class='pp-actions'><button class='pp-btn' data-act='save-edit' data-id='" + item.id + "'>Save</button>"
+            + "<button class='vlt-a' data-act='cancel-slot' data-id='" + item.id + "'>Cancel</button></div>"
+            + "</div>";
+    }
+
+    function card(item, opts) {
+        opts = opts || {};
+        var cm = confMeta(item), appr = item.user_approved, tags = item.tags || [];
+        var chips = tags.slice(0, 10).map(function (t) { return "<span class='vlt-chip'>" + esc(t) + "</span>"; }).join("");
+        var src = item.source_url || "";
+        var link = /^https?:/.test(src) ? "<a class='vlt-src' href='" + esc(src) + "' target='_blank' rel='noopener'>🔗 View source</a>" : "";
+        var catLabel = esc((item.category || "project").replace(/_/g, " "));
+        var apprPill = appr ? "<span class='vlt-pill ok'>✓ Approved</span>" : "<span class='vlt-pill warn'>Needs review</span>";
+        var actions;
+        if (appr) {
+            actions = "<button class='vlt-a' data-act='unapprove' data-id='" + item.id + "'>↩ Unapprove</button>"
+                + "<button class='vlt-a' data-act='edit' data-id='" + item.id + "'>✏️ Edit</button>"
+                + "<button class='vlt-a danger' data-act='delete' data-id='" + item.id + "'>🗑 Delete</button>";
+        } else {
+            actions = "<button class='vlt-a primary' data-act='approve' data-id='" + item.id + "'>✓ Approve</button>"
+                + "<button class='vlt-a' data-act='review' data-id='" + item.id + "'>➕ Add details</button>"
+                + "<button class='vlt-a' data-act='edit' data-id='" + item.id + "'>✏️ Edit</button>"
+                + "<button class='vlt-a danger' data-act='delete' data-id='" + item.id + "'>🗑 Delete</button>";
+        }
+        var slot = opts.reviewOpen ? reviewForm(item) : "";
+        return "<div class='vlt-card' data-card='" + item.id + "'>"
+            + "<div class='vlt-card-head'><span class='vlt-cat'>" + catLabel + "</span>"
+            + "<span class='pp-badge " + cm.cls + "'>" + esc(cm.label) + "</span>" + apprPill + "</div>"
+            + "<h4 class='vlt-title'>" + esc(item.title || "Untitled") + "</h4>"
+            + (item.description ? "<p class='vlt-desc'>" + esc(item.description) + "</p>" : "")
+            + (chips ? "<div class='vlt-chips'>" + chips + "</div>" : "")
+            + link
+            + "<div class='vlt-actions'>" + actions + "</div>"
+            + "<div class='vlt-review-slot' data-slot='" + item.id + "'>" + slot + "</div>"
+            + "</div>";
+    }
+
+    function emptyState() {
+        return "<div class='vlt-empty'><div class='vlt-empty-ic'>🗂️</div>"
+            + "<p><b>Your vault is empty.</b></p>"
+            + "<p class='pp-lead'>Import your GitHub projects or add work manually. Then approve what's true — that becomes your proof.</p></div>";
+    }
+
+    function applyFilters(items) {
+        var q = ($("vSearch").value || "").toLowerCase().trim();
+        var st = $("vFStatus").value, ct = $("vFCat").value, ap = $("vFApproved").value;
+        return items.filter(function (i) {
+            if (st && i.confidence_status !== st) return false;
+            if (ct && i.category !== ct) return false;
+            if (ap === "1" && !i.user_approved) return false;
+            if (ap === "0" && i.user_approved) return false;
+            if (q) {
+                var hay = ((i.title || "") + " " + (i.description || "") + " " + ((i.tags || []).join(" "))).toLowerCase();
+                if (hay.indexOf(q) < 0) return false;
+            }
+            return true;
+        });
+    }
+    function renderVault() {
+        var host = $("vList"); if (!host) return;
+        if (!CACHE.length) { host.innerHTML = emptyState(); return; }
+        var items = applyFilters(CACHE);
+        if (!items.length) { host.innerHTML = "<p class='pp-load'>No items match your filters.</p>"; return; }
+        host.innerHTML = items.map(function (i) { return card(i, {}); }).join("");
+    }
+    function renderReview() {
+        var host = $("vReviewList"); if (!host) return;
+        if (!CACHE.length) { host.innerHTML = emptyState(); return; }
+        var items = CACHE.filter(function (i) { return !i.user_approved; });
+        if (!items.length) { host.innerHTML = "<p class='pp-ok'>🎉 Everything is reviewed and approved.</p>"; return; }
+        host.innerHTML = items.map(function (i) { return card(i, { reviewOpen: true }); }).join("");
+    }
+    function renderShare() {
+        var host = $("vShareList"); if (!host) return;
+        var items = CACHE.filter(function (i) { return i.user_approved; });
+        if (!items.length) { host.innerHTML = "<p class='pp-lead'>Approve some evidence first — only approved items can be shared.</p>"; return; }
+        host.innerHTML = "<div class='vlt-share-head'>Pick what to include (nothing is shared by default):</div>"
+            + items.map(function (i) {
+                return "<label class='vlt-check'><input type='checkbox' class='vShareItem' value='" + i.id + "'> "
+                    + "<span><b>" + esc(i.title || "Untitled") + "</b> <span class='vlt-cat sm'>" + esc((i.category || "").replace(/_/g, " ")) + "</span></span></label>";
+            }).join("");
+    }
+    function refreshActive() {
+        if (activeTab === "vault") renderVault();
+        else if (activeTab === "review") renderReview();
+        else if (activeTab === "share") renderShare();
+    }
+    function reload() {
+        return apiGet("/evidence").then(function (d) {
+            CACHE = (d && d.success) ? (d.evidence || []) : [];
+            refreshActive();
+        });
+    }
+
+    function switchVTab(t) {
+        activeTab = t;
+        var tabs = document.querySelectorAll("#vaultPanel .pp-tab");
+        for (var i = 0; i < tabs.length; i++) tabs[i].classList.toggle("active", tabs[i].getAttribute("data-vtab") === t);
+        var map = { vault: "vVault", review: "vReview", match: "vMatch", build: "vBuild", share: "vShare" };
+        for (var k in map) { var el = $(map[k]); if (el) el.style.display = (k === t ? "block" : "none"); }
+        refreshActive();
+    }
+
+    window.openVault = function (tab) {
+        var o = $("vaultPanel"); if (!o) return;
+        o.classList.add("open"); document.body.style.overflow = "hidden";
+        if (!tok()) { $("vGate").style.display = "block"; $("vApp").style.display = "none"; return; }
+        $("vGate").style.display = "none"; $("vApp").style.display = "block";
+        switchVTab(tab || "vault");
+        $("vList").innerHTML = "<p class='pp-load'>Loading your vault…</p>";
+        reload();
+    };
+    function closeV() { var o = $("vaultPanel"); if (o) { o.classList.remove("open"); document.body.style.overflow = ""; } }
+
+    // ---- actions ----
+    function doImport() {
+        var u = ($("vGh").value || "").trim();
+        if (!u) { toast("Enter your GitHub username."); return; }
+        var b = $("vImport"); b.disabled = true; b.textContent = "Importing…";
+        api("/evidence/import-github", { github: u }).then(function (d) {
+            b.disabled = false; b.textContent = "⬇️ Import from GitHub";
+            if (!d.success) { toast(d.error || "Import failed."); return; }
+            toast("Imported " + d.imported + " project(s). Review them below.");
+            reload();
+        });
+    }
+    function connectGithub() {
+        api("/github/oauth/url", { include_private: false }).then(function (d) {
+            if (!d.success) { toast(d.error || "GitHub sign-in isn't available. Use the username import."); return; }
+            window.open(d.url, "_blank", "width=760,height=800");
+        });
+    }
+    function manualSave() {
+        var title = ($("vmTitle").value || "").trim();
+        if (!title) { toast("Add a title first."); return; }
+        var tags = ($("vmTags").value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+        api("/evidence/add", { category: $("vmCat").value || "project", title: title, description: ($("vmDesc").value || "").trim(), tags: tags }).then(function (d) {
+            if (!d.success) { toast(d.error || "Could not save."); return; }
+            $("vmTitle").value = ""; $("vmDesc").value = ""; $("vmTags").value = "";
+            $("vManualForm").style.display = "none";
+            toast("Added to your vault.");
+            reload();
+        });
+    }
+    function delGithub() {
+        if (!confirm("Delete ALL imported GitHub data from your vault? This can't be undone.")) return;
+        api("/evidence/delete-github", {}).then(function (d) { toast(d.success ? "GitHub data deleted." : "Could not delete."); reload(); });
+    }
+    function onAction(act, id, el) {
+        if (act === "approve") { api("/evidence/update", { id: +id, action: "approve" }).then(function () { toast("Approved."); reload(); }); return; }
+        if (act === "unapprove") { api("/evidence/update", { id: +id, action: "reject" }).then(function () { reload(); }); return; }
+        if (act === "delete") { if (confirm("Delete this item?")) api("/evidence/delete", { id: +id }).then(function () { reload(); }); return; }
+        if (act === "review" || act === "edit") {
+            var slot = document.querySelector("[data-slot='" + id + "']"); if (!slot) return;
+            var it = itemById(id); if (!it) return;
+            if (slot.innerHTML.trim()) { slot.innerHTML = ""; return; }
+            slot.innerHTML = (act === "edit") ? editForm(it) : reviewForm(it);
+            return;
+        }
+        if (act === "cancel-slot") { var s = document.querySelector("[data-slot='" + id + "']"); if (s) s.innerHTML = ""; if (activeTab === "review") renderReview(); return; }
+        if (act === "save-edit") {
+            var c = el.closest(".vlt-card");
+            var title = c.querySelector("[data-f='title']").value;
+            var desc = c.querySelector("[data-f='description']").value;
+            api("/evidence/update", { id: +id, action: "edit", title: title, description: desc }).then(function (d) {
+                if (!d.success) { toast(d.error || "Could not save."); return; } toast("Saved."); reload();
+            });
+            return;
+        }
+        if (act === "save-review") {
+            var cc = el.closest(".vlt-card");
+            function val(f) { var n = cc.querySelector("[data-f='" + f + "']"); return n ? n.value.trim() : ""; }
+            api("/evidence/review", { id: +id, personal_contribution: val("contribution"), solo_or_team: val("solo"), problem_solved: val("problem"), metric: val("metric"), demo_url: val("demo"), approve: true }).then(function (d) {
+                if (!d.success) { toast(d.error || "Could not save."); return; }
+                toast(d.metric_added ? "Saved, approved & metric added." : "Saved & approved.");
+                reload();
+            });
+            return;
+        }
+    }
+
+    function runMatch() {
+        var jd = ($("vJd").value || "").trim(), out = $("vMatchOut");
+        if (!jd) { out.innerHTML = "<p class='pp-err'>Paste a job description first.</p>"; return; }
+        out.innerHTML = "<p class='pp-load'>Mapping requirements to your approved evidence…</p>";
+        api("/evidence-map", { job_description: jd }).then(function (d) {
+            if (!d.success) { out.innerHTML = "<p class='pp-err'>" + esc(d.error || "Could not build the map.") + "</p>"; return; }
+            LAST_MAP = d.map || {};
+            if (d.approved_count === 0) { out.innerHTML = "<div class='vlt-callout'>You have no approved evidence yet. Approve items in <b>My Vault</b> so we can match them.</div>"; return; }
+            var m = LAST_MAP, h = "";
+            if (m.overall_fit) h += "<div class='vlt-callout'>" + esc(m.overall_fit) + "</div>";
+            var sMeta = { supported: ["✅", "ok"], partial: ["🟡", "warn"], missing: ["⛔", "bad"], stretch: ["🚀", "warn"] };
+            (m.requirements || []).forEach(function (r) {
+                var sm = sMeta[r.status] || ["•", "warn"];
+                var names = (r.evidence_item_ids || []).map(function (id) { var it = itemById(id); return it ? esc(it.title) : null; }).filter(Boolean);
+                h += "<div class='vlt-req " + sm[1] + "'><div class='vlt-req-top'>" + sm[0] + " <b>" + esc(r.requirement) + "</b> <span class='vlt-status " + sm[1] + "'>" + esc(r.status || "") + "</span></div>";
+                if (r.explanation) h += "<div class='vlt-req-x'>" + esc(r.explanation) + "</div>";
+                if (names.length) h += "<div class='vlt-req-ev'>Backed by: " + names.join(", ") + "</div>";
+                else if (r.action_if_missing) h += "<div class='vlt-req-act'>→ " + esc(r.action_if_missing) + "</div>";
+                h += "</div>";
+            });
+            out.innerHTML = h;
+        });
+    }
+
+    function runBuild() {
+        var out = $("vBuildOut");
+        out.innerHTML = "<p class='pp-load'>Writing bullets from your approved evidence…</p>";
+        api("/evidence-resume", { role: ($("vRole").value || "").trim(), job_description: ($("vBuildJd").value || "").trim() }).then(function (d) {
+            if (!d.success) { out.innerHTML = "<p class='pp-err'>" + esc(d.error || "Could not generate.") + "</p>"; return; }
+            LAST_BUILD = d;
+            var bl = d.bullets || [];
+            if (!bl.length) { out.innerHTML = "<div class='vlt-callout'>No proof-backed bullets could be generated. Approve more detailed evidence and try again.</div>"; return; }
+            var h = "";
+            if (d.dropped_unsupported) h += "<div class='vlt-note'>" + d.dropped_unsupported + " unsupported claim(s) were automatically dropped.</div>";
+            bl.forEach(function (b, idx) {
+                var label = b.confidence_status === "verified" ? "Verified" : "You confirmed";
+                h += "<div class='pp-bullet'><span class='pp-badge v'>" + esc(label) + "</span><div class='pp-btext'>" + esc(b.text)
+                    + "<div class='vlt-why'><button class='vlt-why-btn' data-why='" + idx + "'>❓ Why this bullet?</button>"
+                    + "<div class='vlt-why-body' id='vWhy" + idx + "' style='display:none;'></div></div>"
+                    + "</div></div>";
+            });
+            h += "<div class='pp-actions' style='margin-top:14px;'><button class='pp-btn' id='vExport'>📥 Export PDF (checks proof first)</button></div>";
+            h += "<div id='vExportMsg' style='margin-top:8px;'></div>";
+            out.innerHTML = h;
+        });
+    }
+    function whyBullet(idx) {
+        var body = $("vWhy" + idx); if (!body || !LAST_BUILD) return;
+        if (body.style.display === "block") { body.style.display = "none"; return; }
+        var b = (LAST_BUILD.bullets || [])[idx]; if (!b) return;
+        var ev = LAST_BUILD.evidence || [];
+        function evById(id) { for (var i = 0; i < ev.length; i++) { if (String(ev[i].id) === String(id)) return ev[i]; } return null; }
+        var h = "";
+        (b.evidence_item_ids || []).forEach(function (id) {
+            var it = evById(id); if (!it) return;
+            var reqs = [];
+            if (LAST_MAP && LAST_MAP.requirements) LAST_MAP.requirements.forEach(function (r) { if ((r.evidence_item_ids || []).map(String).indexOf(String(id)) >= 0) reqs.push(r.requirement); });
+            h += "<div class='vlt-why-item'><b>" + esc(it.title || "Evidence") + "</b>"
+                + (it.description ? "<div class='vlt-why-x'>" + esc(it.description) + "</div>" : "")
+                + (it.source_url && /^https?:/.test(it.source_url) ? "<a class='vlt-src' href='" + esc(it.source_url) + "' target='_blank' rel='noopener'>🔗 Source</a>" : "")
+                + (reqs.length ? "<div class='vlt-why-req'>Addresses: " + esc(reqs.join(", ")) + "</div>" : "")
+                + "</div>";
+        });
+        body.innerHTML = h || "<div class='vlt-why-x'>Backed by your approved evidence.</div>";
+        body.style.display = "block";
+    }
+    function vDownloadPdf(payload, filename) {
+        return fetch(V_API + "/download-resume-pdf", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+            .then(function (r) { if (!r.ok) throw new Error("pdf"); return r.blob(); })
+            .then(function (blob) { var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100); });
+    }
+    function exportBuild() {
+        if (!LAST_BUILD) return;
+        var msg = $("vExportMsg"), bullets = LAST_BUILD.bullets || [];
+        var claims = bullets.map(function (b) { return { text: b.text, evidence_item_ids: b.evidence_item_ids || [] }; });
+        msg.innerHTML = "<span class='pp-load'>Checking every bullet has approved proof…</span>";
+        api("/resume/export-check", { claims: claims }).then(function (d) {
+            if (!d.success) { msg.innerHTML = "<span class='pp-err'>" + esc(d.error || "Check failed.") + "</span>"; return; }
+            if (!d.ok) {
+                msg.innerHTML = "<div class='vlt-callout bad'><b>Export blocked.</b> These bullets aren't backed by approved evidence:<ul>"
+                    + (d.unsupported || []).map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>Approve their evidence or remove them.</div>";
+                return;
+            }
+            var meta = window.__resumeMeta || {};
+            var name = ((window.__resumeText || "").split("\n")[0] || "").trim() || meta.name || "";
+            var lines = [];
+            if (name) lines.push(name);
+            var contact = [meta.email, meta.phone, meta.location].filter(Boolean).join(" | ");
+            if (contact) lines.push(contact);
+            lines.push(""); lines.push("PROJECTS & EXPERIENCE");
+            bullets.forEach(function (b) { lines.push("- " + b.text); });
+            msg.innerHTML = "<span class='pp-load'>Building your PDF…</span>";
+            vDownloadPdf({ template: "professional", resume: lines.join("\n"), name: name, email: meta.email || "", phone: meta.phone || "", location: meta.location || "" }, "ResumeForge_Proof_Resume.pdf")
+                .then(function () { msg.innerHTML = "<span class='pp-ok'>✅ Exported. Every bullet is backed by approved proof.</span>"; })
+                .catch(function () { msg.innerHTML = "<span class='pp-err'>Could not build the PDF. Please try again.</span>"; });
+        });
+    }
+
+    function runShare() {
+        var out = $("vShareOut");
+        var ids = [].slice.call(document.querySelectorAll(".vShareItem:checked")).map(function (c) { return +c.value; });
+        if (!ids.length) { out.innerHTML = "<p class='pp-err'>Pick at least one project to include.</p>"; return; }
+        out.innerHTML = "<p class='pp-load'>Building your private proof page…</p>";
+        api("/proof-page", { evidence_item_ids: ids, name: ($("vShareName").value || "").trim(), headline: ($("vShareHeadline").value || "").trim(), contact: ($("vShareContact").value || "").trim() }).then(function (d) {
+            if (!d.success) { out.innerHTML = "<p class='pp-err'>" + esc(d.error || "Could not build the page.") + "</p>"; return; }
+            window.__vaultProofHtml = d.html || "";
+            out.innerHTML = "<p class='pp-ok'>✅ Your private proof page is ready (" + d.count + " item" + (d.count > 1 ? "s" : "") + ").</p>"
+                + "<div class='pp-actions'><button class='pp-btn' id='vShareView'>👁 Preview</button><button class='pp-btn' id='vShareDl'>📥 Download HTML</button></div>"
+                + "<div class='vlt-note'>Private by design — this page exists only as a file you choose to share, and includes only the items you selected.</div>";
+        });
+    }
+
+    // ---- events ----
+    document.addEventListener("click", function (e) {
+        var t = e.target; if (!t || !t.closest) return;
+        if (t.id === "openVaultBtn" || t.id === "navVaultBtn") { window.openVault("vault"); return; }
+        if (t.id === "vGateLogin") { var lb = document.getElementById("loginBtn"); if (lb) lb.click(); return; }
+        if (!t.closest("#vaultPanel")) return;
+        if (t.id === "vClose") { closeV(); return; }
+        var tab = t.closest(".pp-tab"); if (tab && tab.getAttribute("data-vtab")) { switchVTab(tab.getAttribute("data-vtab")); return; }
+        if (t.id === "vImport") { doImport(); return; }
+        if (t.id === "vConnectGh") { connectGithub(); return; }
+        if (t.id === "vAddToggle") { var f = $("vManualForm"); f.style.display = f.style.display === "none" ? "block" : "none"; return; }
+        if (t.id === "vmSave") { manualSave(); return; }
+        if (t.id === "vDelGh") { delGithub(); return; }
+        if (t.id === "vRunMatch") { runMatch(); return; }
+        if (t.id === "vRunBuild") { runBuild(); return; }
+        if (t.id === "vExport") { exportBuild(); return; }
+        if (t.id === "vRunShare") { runShare(); return; }
+        if (t.id === "vShareView") { var w = window.open(); if (w) { w.document.write(window.__vaultProofHtml || ""); w.document.close(); } return; }
+        if (t.id === "vShareDl") { var b = new Blob([window.__vaultProofHtml || ""], { type: "text/html" }); var a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "Proof_Page.html"; document.body.appendChild(a); a.click(); a.remove(); return; }
+        var why = t.closest(".vlt-why-btn"); if (why) { whyBullet(why.getAttribute("data-why")); return; }
+        var actBtn = t.closest("[data-act]"); if (actBtn) { onAction(actBtn.getAttribute("data-act"), actBtn.getAttribute("data-id"), actBtn); return; }
+    });
+    ["vSearch", "vFStatus", "vFCat", "vFApproved"].forEach(function (id) {
+        var el = $(id); if (el) { el.addEventListener("input", renderVault); el.addEventListener("change", renderVault); }
+    });
+    window.addEventListener("message", function (e) { if (e && e.data && e.data.rf_github) { toast("GitHub connected."); reload(); } });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") { var o = $("vaultPanel"); if (o && o.classList.contains("open")) closeV(); } });
 })();
 </script>
 

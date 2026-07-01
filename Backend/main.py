@@ -32,7 +32,13 @@ import google.generativeai as genai
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import simpleSplit
 
-from playwright.sync_api import sync_playwright
+# Playwright is only needed by the (now-dead) HTML->PDF path; PDFs are built with
+# reportlab. Import defensively so the app still boots on minimal/CI envs where
+# the heavy Chromium browser package isn't installed.
+try:
+    from playwright.sync_api import sync_playwright
+except Exception:   # pragma: no cover - environment-dependent
+    sync_playwright = None
 
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -179,7 +185,10 @@ def health():
 
 from fastapi import Header
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db")
+# Local SQLite path. Overridable via RF_DB_PATH so tests can point at a throwaway
+# database without touching the developer's real users.db.
+DB_PATH = os.getenv("RF_DB_PATH") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "users.db")
 
 # Use Postgres (Supabase) when DATABASE_URL is set, else local SQLite.
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -1465,6 +1474,31 @@ class ExportCheckRequest(BaseModel):
     claims: List[dict] = []   # [{text, evidence_item_ids: [...]}]
 
 
+def _import_projects_as_evidence(conn, user_id, projects, source_type="github_repository",
+                                 consent="granted"):
+    """Persist fetched GitHub projects as UNAPPROVED, ai_inferred evidence items
+    (one source + one 'project' item each). Nothing here is usable in a resume or
+    share page until the user reviews and approves it. Shared by the public
+    username import and the OAuth import so both behave identically."""
+    created = 0
+    for p in projects:
+        src_id = db_insert(conn,
+            "INSERT INTO evidence_sources (user_id, source_type, source_url, source_title, "
+            "source_content, consent_status) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, source_type, p.get("url"), p.get("name"),
+             (p.get("readme_excerpt") or "")[:2000], consent))
+        tags = list(p.get("topics") or []) + ([p["language"]] if p.get("language") else [])
+        db_exec(conn,
+            "INSERT INTO evidence_items (user_id, source_id, category, title, description, "
+            "structured_tags, confidence_status, user_approved, source_excerpt, source_url) "
+            f"VALUES (?, ?, 'project', ?, ?, ?, 'ai_inferred', {_FALSE}, ?, ?)",
+            (user_id, src_id, p.get("name"), p.get("description") or "",
+             _json.dumps(tags), (p.get("readme_excerpt") or "")[:600],
+             p.get("deployed") or p.get("url")))
+        created += 1
+    return created
+
+
 @app.post("/evidence/import-github")
 def evidence_import_github(data: ImportGithubRequest, authorization: Optional[str] = Header(None)):
     user = get_user_from_token(authorization)
@@ -1475,23 +1509,8 @@ def evidence_import_github(data: ImportGithubRequest, authorization: Optional[st
     if not projects:
         return {"success": False, "error": "No public GitHub projects found for that username."}
     conn = get_db()
-    created = 0
     try:
-        for p in projects:
-            src_id = db_insert(conn,
-                "INSERT INTO evidence_sources (user_id, source_type, source_url, source_title, source_content) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (user["id"], "github_repository", p.get("url"), p.get("name"),
-                 (p.get("readme_excerpt") or "")[:2000]))
-            tags = list(p.get("topics") or []) + ([p["language"]] if p.get("language") else [])
-            db_exec(conn,
-                "INSERT INTO evidence_items (user_id, source_id, category, title, description, "
-                "structured_tags, confidence_status, user_approved, source_excerpt, source_url) "
-                f"VALUES (?, ?, 'project', ?, ?, ?, 'ai_inferred', {_FALSE}, ?, ?)",
-                (user["id"], src_id, p.get("name"), p.get("description") or "",
-                 _json.dumps(tags), (p.get("readme_excerpt") or "")[:600],
-                 p.get("deployed") or p.get("url")))
-            created += 1
+        created = _import_projects_as_evidence(conn, user["id"], projects, "github_repository", "granted")
         conn.commit()
     finally:
         conn.close()
@@ -1621,6 +1640,42 @@ def _approved_evidence(user_id):
     return [dict(r) for r in rows]
 
 
+# Impact-metric patterns the model must never invent. A generated bullet may keep
+# such a figure ONLY if that exact number appears in the approved evidence it
+# cites; otherwise the number is unsupported and the whole bullet is dropped (H4).
+_METRIC_RE = re.compile(
+    r"\d+(?:\.\d+)?\s*%"                       # 40%, 12.5 %
+    r"|\$\s?\d[\d,]*(?:\.\d+)?\s?[kmb]?\b"     # $10, $1,000, $2k
+    r"|\b\d+(?:\.\d+)?\s?x\b"                  # 3x, 10x
+    r"|\b\d{3,}\b"                             # 500, 10000 (3+ digit counts)
+    r"|\b\d[\d,]*\+?\s*(?:users|customers|downloads|installs|requests|"
+    r"transactions|records|clients|companies|teams|developers|stars|"
+    r"visitors|signups|sessions|queries|dau|mau)\b",
+    re.IGNORECASE,
+)
+
+
+def _numbers_in(text):
+    """Digit sequences in a string, comma-normalized (so '1,000' == '1000')."""
+    return {n.replace(",", "") for n in re.findall(r"\d[\d,]*(?:\.\d+)?", str(text or ""))}
+
+
+def _bullet_metric_supported(bullet_text, evidence_texts):
+    """True if a bullet claims no impact metric, or every number inside a
+    metric-looking phrase also appears in its supporting evidence text."""
+    phrases = _METRIC_RE.findall(bullet_text or "")
+    if not phrases:
+        return True
+    ev_numbers = set()
+    for t in evidence_texts:
+        ev_numbers |= _numbers_in(t)
+    for phrase in phrases:
+        for num in _numbers_in(phrase):
+            if num not in ev_numbers:
+                return False
+    return True
+
+
 @app.post("/evidence-map")
 def evidence_map(data: EvidenceMapRequest, authorization: Optional[str] = Header(None)):
     user = get_user_from_token(authorization)
@@ -1683,14 +1738,25 @@ Return ONLY JSON:
         return {"success": False, "error": "Could not generate. Please try again."}
     bullets = parsed.get("bullets") or []
     approved_ids = {e["id"] for e in approved}
-    # Keep only bullets whose evidence is real + approved, then persist provenance.
+    by_id = {e["id"]: e for e in approved}
+    # Keep only bullets whose evidence is real + approved AND whose metrics are
+    # backed by that evidence, then persist provenance for each surviving bullet.
     clean = []
+    dropped = 0
     conn = get_db()
     try:
         for b in bullets:
             ids = [int(x) for x in (b.get("evidence_item_ids") or []) if str(x).isdigit() and int(x) in approved_ids]
             if not ids:
+                dropped += 1
                 continue   # a bullet with no approved evidence is dropped
+            ev_texts = []
+            for i in ids:
+                e = by_id.get(i, {})
+                ev_texts += [e.get("title") or "", e.get("description") or "", e.get("structured_tags") or ""]
+            if not _bullet_metric_supported(b.get("text", ""), ev_texts):
+                dropped += 1
+                continue   # H4: drop bullets that add a metric the evidence doesn't support
             db_exec(conn,
                 "INSERT INTO resume_claims (user_id, text, claim_type, confidence_status, "
                 f"approved_by_user, evidence_item_ids) VALUES (?, ?, ?, ?, {_TRUE}, ?)",
@@ -1701,7 +1767,7 @@ Return ONLY JSON:
         conn.commit()
     finally:
         conn.close()
-    return {"success": True, "bullets": clean, "evidence": approved}
+    return {"success": True, "bullets": clean, "evidence": approved, "dropped_unsupported": dropped}
 
 
 @app.post("/resume/export-check")
@@ -1725,6 +1791,281 @@ def export_check(data: ExportCheckRequest, authorization: Optional[str] = Header
         if not ok:
             unsupported.append(c.get("text", ""))
     return {"success": True, "ok": len(unsupported) == 0, "unsupported": unsupported}
+
+
+# ---- Project review flow: the user adds the context only they can confirm ----
+class EvidenceReviewRequest(BaseModel):
+    id: int
+    personal_contribution: str = ""   # "What did YOU build?"
+    solo_or_team: str = ""            # solo | team | free text
+    problem_solved: str = ""
+    metric: str = ""                  # a REAL metric the user provides + confirms
+    demo_url: str = ""                # live demo / screenshot link
+    approve: bool = True
+
+
+@app.post("/evidence/review")
+def evidence_review(data: EvidenceReviewRequest, authorization: Optional[str] = Header(None)):
+    """Save the user's own answers about a project (contribution, solo/team,
+    problem, live demo) onto the evidence item, and — only if the user typed a
+    real metric — create a separate approved 'metric' evidence item. This is the
+    ONLY path by which a numeric metric can enter the vault (never auto-invented)."""
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    conn = get_db()
+    try:
+        row = db_one(conn, "SELECT id, source_id, title, description FROM evidence_items "
+                           "WHERE id = ? AND user_id = ?", (data.id, user["id"]))
+        if not row:
+            return {"success": False, "error": "Not found."}
+        row = dict(row)
+        base = (row.get("description") or "").strip()
+        additions = []
+        if data.personal_contribution.strip():
+            additions.append("My contribution: " + data.personal_contribution.strip())
+        if data.problem_solved.strip():
+            additions.append("Problem it solves: " + data.problem_solved.strip())
+        if data.solo_or_team.strip():
+            additions.append("Work type: " + data.solo_or_team.strip())
+        if data.demo_url.strip():
+            additions.append("Live demo: " + data.demo_url.strip())
+        new_desc = base
+        if additions:
+            new_desc = (base + "\n" if base else "") + " | ".join(additions)
+        approved_sql = _TRUE if data.approve else _FALSE
+        if data.demo_url.strip():
+            db_exec(conn, f"UPDATE evidence_items SET description=?, source_url=?, "
+                          f"confidence_status='user_confirmed', user_approved={approved_sql}, "
+                          f"updated_at={_NOW} WHERE id=? AND user_id=?",
+                    (new_desc, data.demo_url.strip(), data.id, user["id"]))
+        else:
+            db_exec(conn, f"UPDATE evidence_items SET description=?, "
+                          f"confidence_status='user_confirmed', user_approved={approved_sql}, "
+                          f"updated_at={_NOW} WHERE id=? AND user_id=?",
+                    (new_desc, data.id, user["id"]))
+        metric_added = False
+        if data.metric.strip():
+            db_exec(conn,
+                "INSERT INTO evidence_items (user_id, source_id, category, title, description, "
+                "structured_tags, confidence_status, user_approved, source_url) "
+                f"VALUES (?, ?, 'metric', ?, ?, ?, 'user_confirmed', {_TRUE}, ?)",
+                (user["id"], row.get("source_id"), "Metric — " + (row.get("title") or "project"),
+                 data.metric.strip(), _json.dumps(["metric"]),
+                 data.demo_url.strip() or None))
+            metric_added = True
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True, "approved": bool(data.approve), "metric_added": metric_added}
+
+
+# ---- Shareable proof page: OFF by default, opt-in, only the items the user picks ----
+class ProofPageRequest(BaseModel):
+    evidence_item_ids: List[int] = []   # explicit selection = the user's opt-in
+    name: str = ""
+    headline: str = ""                  # optional "why I fit" line
+    contact: str = ""                   # optional email/link the user chooses to show
+
+
+def _proof_page_html(name, headline, contact, items):
+    esc = html.escape
+    cards = []
+    for it in items:
+        try:
+            tags = _json.loads(it.get("structured_tags") or "[]")
+        except Exception:
+            tags = []
+        chips = "".join(f"<span class='chip'>{esc(str(t))}</span>" for t in tags[:8] if t)
+        url = (it.get("source_url") or "").strip()
+        link = (f"<a href='{esc(url)}' target='_blank' rel='noopener'>View project / live demo →</a>"
+                if url.startswith("http") else "")
+        cat = esc((it.get("category") or "project").replace("_", " "))
+        cards.append(
+            f"<article class='card'><span class='cat'>{cat}</span>"
+            f"<h2>{esc(it.get('title') or 'Project')}</h2>"
+            f"<p>{esc(it.get('description') or '')}</p>"
+            f"<div class='chips'>{chips}</div>{link}</article>")
+    who = esc(name or "My Proof")
+    head_html = f"<p class='lead'>{esc(headline)}</p>" if headline.strip() else ""
+    contact_html = f"<p class='contact'>{esc(contact)}</p>" if contact.strip() else ""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{who} — Proof of Work</title>
+<style>
+:root{{--accent:#9a3b1c;--ink:#2a2118;--muted:#6b6250;--bg:#f7f1e6;--card:#fff;--border:#e3ded2;}}
+*{{box-sizing:border-box;}}
+body{{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.55;}}
+.wrap{{max-width:840px;margin:0 auto;padding:44px 20px 64px;}}
+header{{border-bottom:3px solid var(--accent);padding-bottom:18px;margin-bottom:26px;}}
+h1{{margin:0 0 6px;font-size:2rem;color:var(--accent);}}
+.lead{{font-size:1.08rem;color:var(--ink);margin:.4rem 0;}}
+.contact{{color:var(--muted);font-size:.95rem;margin:.2rem 0 0;}}
+.card{{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.04);}}
+.card h2{{margin:.2rem 0 .5rem;font-size:1.2rem;}}
+.card p{{margin:.2rem 0 .7rem;color:var(--ink);white-space:pre-wrap;}}
+.cat{{display:inline-block;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#fff;background:var(--accent);border-radius:20px;padding:3px 10px;}}
+.chips{{margin:.3rem 0 .6rem;}}
+.chip{{display:inline-block;background:#f0e8d8;color:#6b4a2b;border-radius:20px;padding:3px 10px;font-size:.78rem;margin:0 6px 6px 0;}}
+a{{color:var(--accent);font-weight:700;text-decoration:none;}}
+a:hover{{text-decoration:underline;}}
+footer{{margin-top:30px;color:var(--muted);font-size:.82rem;text-align:center;}}
+@media(max-width:520px){{h1{{font-size:1.6rem;}}.wrap{{padding:28px 14px 48px;}}}}
+</style></head><body><div class="wrap">
+<header><h1>{who}</h1>{head_html}{contact_html}</header>
+<main>{''.join(cards)}</main>
+<footer>Verified work samples selected by {who}. Built with ResumeForge.</footer>
+</div></body></html>"""
+
+
+@app.post("/proof-page")
+def proof_page(data: ProofPageRequest, authorization: Optional[str] = Header(None)):
+    """Build a private, single-file proof page from ONLY the approved evidence
+    items the user explicitly selected. Never includes unapproved items, another
+    user's items, or raw imported source (README) content — just the user's own
+    approved title/description/tags and the project link they chose to share."""
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    ids = [int(x) for x in (data.evidence_item_ids or []) if str(x).isdigit()]
+    if not ids:
+        return {"success": False,
+                "error": "Pick at least one approved project to include. Nothing is shared by default."}
+    conn = get_db()
+    try:
+        placeholders = ",".join("?" for _ in ids)
+        rows = db_all(conn,
+            "SELECT id, category, title, description, structured_tags, source_url FROM evidence_items "
+            f"WHERE user_id = ? AND user_approved = {_TRUE} AND id IN ({placeholders})",
+            tuple([user["id"]] + ids))
+    finally:
+        conn.close()
+    items = [dict(r) for r in rows]
+    if not items:
+        return {"success": False,
+                "error": "None of the selected items are approved yet. Approve them in your vault first."}
+    html_doc = _proof_page_html(data.name, data.headline, data.contact, items)
+    return {"success": True, "html": html_doc, "included": [it["id"] for it in items], "count": len(items)}
+
+
+# ---- Optional real GitHub OAuth (minimal scope) — used only if configured ----
+# Set GITHUB_CLIENT_ID + GITHUB_CLIENT_SECRET (and register the callback URL) to
+# enable. Falls back cleanly to the public-username import when unset. The access
+# token is used once to import and never stored.
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "").strip()
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "").strip()
+GITHUB_OAUTH_REDIRECT = os.getenv("GITHUB_OAUTH_REDIRECT", "").strip()
+_oauth_states = {}   # state -> (user_id, expires_at); in-memory, short-lived
+
+
+def _github_oauth_enabled():
+    return bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET and GITHUB_OAUTH_REDIRECT)
+
+
+class OAuthUrlRequest(BaseModel):
+    include_private: bool = False
+
+
+@app.post("/github/oauth/url")
+def github_oauth_url(data: OAuthUrlRequest, authorization: Optional[str] = Header(None)):
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    if not _github_oauth_enabled():
+        return {"success": False, "error": "GitHub sign-in isn't configured. Use the username import instead.",
+                "configured": False}
+    # Prune expired states, then mint a fresh one bound to this user.
+    now = time.time()
+    for s in [k for k, v in _oauth_states.items() if v[1] < now]:
+        _oauth_states.pop(s, None)
+    state = secrets.token_urlsafe(24)
+    _oauth_states[state] = (user["id"], now + 600)   # 10-minute validity
+    # Minimal scope: read profile + PUBLIC repos. Private repos only if the user opts in.
+    scope = "read:user repo" if data.include_private else "read:user public_repo"
+    url = ("https://github.com/login/oauth/authorize"
+           f"?client_id={GITHUB_CLIENT_ID}&redirect_uri={requests.utils.quote(GITHUB_OAUTH_REDIRECT, safe='')}"
+           f"&scope={requests.utils.quote(scope)}&state={state}")
+    return {"success": True, "url": url, "configured": True}
+
+
+def _fetch_github_evidence_oauth(token, max_projects=6):
+    """Fetch the authenticated user's own repos (incl. private, if the granted
+    scope allows) with the same proof signals as the public fetcher."""
+    out = []
+    hdr = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json"}
+    try:
+        r = requests.get("https://api.github.com/user/repos?per_page=100&sort=pushed&affiliation=owner",
+                         headers=hdr, timeout=10)
+        repos = r.json() if r.status_code == 200 else []
+        if not isinstance(repos, list):
+            repos = []
+    except Exception as e:
+        print("github oauth fetch error:", str(e))
+        repos = []
+    repos = [x for x in repos if isinstance(x, dict) and not x.get("fork")]
+    repos.sort(key=lambda x: (x.get("stargazers_count", 0) or 0, x.get("pushed_at", "") or ""), reverse=True)
+    for repo in repos[:max_projects]:
+        full = repo.get("full_name") or ""
+        readme = ""
+        try:
+            rr = requests.get(f"https://api.github.com/repos/{full}/readme",
+                              headers={**hdr, "Accept": "application/vnd.github.raw"}, timeout=8)
+            if rr.status_code == 200 and rr.text.strip():
+                readme = rr.text[:2500]
+        except Exception:
+            pass
+        out.append({
+            "name": repo.get("name") or "", "url": repo.get("html_url") or "",
+            "deployed": (repo.get("homepage") or "").strip(), "description": repo.get("description") or "",
+            "language": repo.get("language") or "", "topics": repo.get("topics") or [],
+            "stars": repo.get("stargazers_count", 0) or 0, "readme_excerpt": readme,
+        })
+    return out
+
+
+def _oauth_result_page(message, ok=True):
+    color = "#1d7a4d" if ok else "#c0392b"
+    return (f"<!doctype html><meta charset='utf-8'><body style=\"font-family:sans-serif;"
+            f"background:#f7f1e6;color:#2a2118;text-align:center;padding:60px 20px\">"
+            f"<h2 style='color:{color}'>{html.escape(message)}</h2>"
+            f"<p>You can close this tab and return to ResumeForge.</p>"
+            f"<script>try{{window.opener&&window.opener.postMessage({{rf_github:{ 'true' if ok else 'false'}}},'*');}}catch(e){{}}"
+            f"setTimeout(function(){{window.close();}},1500);</script></body>")
+
+
+@app.get("/github/oauth/callback")
+def github_oauth_callback(code: str = "", state: str = ""):
+    from fastapi.responses import HTMLResponse
+    if not _github_oauth_enabled():
+        return HTMLResponse(_oauth_result_page("GitHub sign-in isn't configured.", ok=False), status_code=400)
+    entry = _oauth_states.pop(state, None)
+    if not entry or entry[1] < time.time():
+        return HTMLResponse(_oauth_result_page("This sign-in link expired. Please try again.", ok=False),
+                            status_code=400)
+    user_id = entry[0]
+    try:
+        tok_resp = requests.post("https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            data={"client_id": GITHUB_CLIENT_ID, "client_secret": GITHUB_CLIENT_SECRET,
+                  "code": code, "redirect_uri": GITHUB_OAUTH_REDIRECT, "state": state},
+            timeout=10)
+        token = (tok_resp.json() or {}).get("access_token") if tok_resp.status_code == 200 else None
+    except Exception as e:
+        print("oauth token exchange error:", str(e))
+        token = None
+    if not token:
+        return HTMLResponse(_oauth_result_page("Couldn't connect your GitHub. Please try again.", ok=False),
+                            status_code=400)
+    projects = _fetch_github_evidence_oauth(token, max_projects=6)
+    conn = get_db()
+    try:
+        created = _import_projects_as_evidence(conn, user_id, projects, "github_repository", "granted")
+        conn.commit()
+    finally:
+        conn.close()
+    # Token is intentionally discarded here — we never persist GitHub access tokens.
+    return HTMLResponse(_oauth_result_page(f"GitHub connected — imported {created} project(s) to review."))
 
 
 # ============================================================
@@ -1813,6 +2154,8 @@ def save_resume(data: SaveResumeRequest):
 def render_html_to_pdf(html_content, basename):
     # Unique suffix per call so concurrent users never overwrite each other's
     # in-progress files (was a fixed name -> race condition / wrong PDF served).
+    if sync_playwright is None:
+        raise RuntimeError("Playwright is not available; use build_resume_pdf (reportlab) instead.")
     uid = secrets.token_hex(8)
     html_file = f"{basename}_{uid}.html"
     pdf_file = f"{basename}_{uid}.pdf"

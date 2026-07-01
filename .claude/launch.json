@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "py",
+      "runtimeArgs": ["-m", "http.server", "5500", "--directory", "Frontend"],
+      "port": 5500
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "py",
+      "runtimeArgs": ["-m", "uvicorn", "main:app", "--port", "8000"],
+      "port": 8000
+    }
+  ]
+}
