@@ -105,6 +105,7 @@ RL_PATHS = {
     "/proof-resume", "/defense-questions", "/evaluate-answer",
     "/skill-roadmap", "/quality-gate", "/recruiter-page",
     "/evidence/import-github", "/evidence-map", "/evidence-resume",
+    "/evidence-quality-gate",
 }
 RL_MAX = int(os.getenv("RATE_LIMIT_MAX", "30"))      # requests
 RL_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
@@ -1791,6 +1792,75 @@ def export_check(data: ExportCheckRequest, authorization: Optional[str] = Header
         if not ok:
             unsupported.append(c.get("text", ""))
     return {"success": True, "ok": len(unsupported) == 0, "unsupported": unsupported}
+
+
+# ---- Application Quality Gate (Differentiator #2): decision, from real evidence ----
+class EvidenceQualityGateRequest(BaseModel):
+    job_description: str = ""
+    resume: str = ""
+    job_ref: str = ""
+
+
+@app.post("/evidence-quality-gate")
+def evidence_quality_gate(data: EvidenceQualityGateRequest, authorization: Optional[str] = Header(None)):
+    """Decide whether the user is a CREDIBLE fit for a job, judged against their
+    APPROVED, proof-backed evidence — not keyword matching. Distinguishes a real
+    skill gap from merely-missing-proof, and says exactly what to fix."""
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in."}
+    jd = (data.job_description or "").strip()
+    if not jd:
+        return {"success": False, "error": "Paste a job description."}
+    approved = _approved_evidence(user["id"])
+    ev_text = "\n".join(
+        f"[{e['id']}] ({e.get('category')}) {e.get('title')}: {e.get('description')} | tags: {e.get('structured_tags')}"
+        for e in approved)
+    no_ev_note = ("" if approved else
+                  "NOTE: the user has approved no evidence yet — judge conservatively and make clear that "
+                  "claims are currently unproven.")
+    prompt = f"""You are ResumeForge's APPLICATION QUALITY GATE. Decide, honestly, whether this candidate is a
+CREDIBLE fit for the job — based on their APPROVED, proof-backed evidence, not keyword matching. Never
+fabricate capabilities. Critically, distinguish a REAL skill gap (they genuinely can't do it yet) from
+MISSING PROOF (they likely can, but haven't shown evidence).
+
+JOB DESCRIPTION:
+{jd[:2500]}
+
+CANDIDATE'S APPROVED EVIDENCE (id: category: title: description: tags):
+{ev_text or 'None approved yet.'}
+
+RESUME (context only — may contain unproven or exaggerated claims):
+{(data.resume or '')[:2500]}
+{no_ev_note}
+
+Return ONLY JSON:
+{{
+ "verdict": "apply_now|improve_first|stretch|low_fit",
+ "fit_reason": "1-2 honest sentences (NOT a hiring probability)",
+ "matched": [{{"requirement":"...","evidence_item_ids":[ids that prove it],"note":"how the evidence supports it"}}],
+ "partial": [{{"requirement":"...","note":"what's missing to make it solid"}}],
+ "unsupported_claims": ["resume claims not backed by approved evidence, or that look exaggerated"],
+ "real_gaps": ["skills the candidate genuinely lacks for this role"],
+ "missing_proof": ["skills they likely have but haven't proven — the fix is to add proof, not learn from scratch"],
+ "bullet_to_change": {{"current":"the weakest or most exaggerated bullet","suggested":"a truthful, evidence-backed rewrite"}},
+ "project_improvement": "the ONE project change that would most strengthen this application",
+ "interview_ready": {{"ready": true, "note":"can they defend the core claims? what to prepare"}}
+}}
+Verdict guidance:
+- apply_now = approved evidence strongly supports the core requirements.
+- improve_first = a few quick fixes (add a demo link, rewrite one bullet, approve an item) make it credible.
+- stretch = missing meaningful proof or experience, but a reasonable shot.
+- low_fit = core requirements are genuinely unmet — not worth the time right now."""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("evidence-quality-gate error:", str(e))
+        return {"success": False, "error": "Could not analyze the application. Please try again."}
+    if not parsed.get("verdict"):
+        return {"success": False, "error": "Could not analyze the application. Please try again."}
+    return {"success": True, "gate": parsed, "approved_count": len(approved)}
 
 
 # ---- Project review flow: the user adds the context only they can confirm ----

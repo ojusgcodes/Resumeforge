@@ -4465,22 +4465,41 @@ body.dark-mode .pp-sum,body.dark-mode .pp-bullet,body.dark-mode .pp-row,body.dar
         out.innerHTML = h || "<p class='pp-err'>No bullets returned. Try again.</p>";
     }
 
+    function _list(title, arr) {
+        if (!arr || !arr.length) return "";
+        return "<h4>" + title + "</h4><ul>" + arr.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
+    }
     async function runGate() {
         var jd = ($("ppGateJd").value || "").trim(), out = $("ppGateOut");
-        if (!rtext()) { out.innerHTML = "<p class='pp-err'>Generate a resume first.</p>"; return; }
         if (!jd) { out.innerHTML = "<p class='pp-err'>Paste a job description first.</p>"; return; }
-        out.innerHTML = "<p class='pp-load'>Checking your fit and evidence…</p>";
-        var d = await api("/quality-gate", { resume: rtext(), job_description: jd });
+        out.innerHTML = "<p class='pp-load'>Weighing this job against your approved evidence…</p>";
+        var d = await api("/evidence-quality-gate", { resume: rtext(), job_description: jd });
         if (!d.success) { out.innerHTML = "<p class='pp-err'>" + esc(d.error) + "</p>"; return; }
         var g = d.gate || {};
-        var vmap = { apply: ["✅ Apply now", "v"], improve_first: ["✏️ Improve first", "i"], stretch: ["🚀 Stretch — apply if you can show proof", "i"], skip: ["⛔ Low fit — skip this one", "x"] };
+        var vmap = {
+            apply_now: ["✅ Apply now — your proof supports this", "v"],
+            improve_first: ["✏️ Apply after fixing a few things", "i"],
+            stretch: ["🚀 Stretch role — worth a shot, but light on proof", "i"],
+            low_fit: ["⛔ Low fit — probably skip this one for now", "x"]
+        };
         var vv = vmap[g.verdict] || [esc(g.verdict || "?"), "i"];
-        var h = "<div class='pp-verdict " + vv[1] + "'>" + vv[0] + " · " + (g.fit_percent || 0) + "% fit</div>";
+        var h = "<div class='pp-verdict " + vv[1] + "'>" + vv[0] + "</div>";
+        if (typeof d.approved_count === "number" && d.approved_count === 0)
+            h += "<p class='pp-err'>Tip: you haven't approved any evidence yet — approve items in the Vault for a much sharper verdict.</p>";
         if (g.fit_reason) h += "<p>" + esc(g.fit_reason) + "</p>";
-        if ((g.evidence_map || []).length) { h += "<h4>Evidence map</h4>"; g.evidence_map.forEach(function (m) { h += "<div class='pp-row'>" + (m.covered ? "✅" : "⚠️") + " <b>" + esc(m.requirement) + "</b> — " + esc(m.proof || "no proof yet") + "</div>"; }); }
-        if ((g.missing_proof || []).length) h += "<h4>Missing proof</h4><ul>" + g.missing_proof.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
-        if ((g.overstated || []).length) h += "<h4>Looks overstated</h4><ul>" + g.overstated.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
-        if ((g.top_fixes || []).length) h += "<h4>Fix these before applying</h4><ul>" + g.top_fixes.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
+        if ((g.matched || []).length) { h += "<h4>✅ You genuinely match</h4>"; g.matched.forEach(function (m) { h += "<div class='pp-row'><b>" + esc(m.requirement) + "</b> — " + esc(m.note || "supported by your evidence") + "</div>"; }); }
+        if ((g.partial || []).length) { h += "<h4>⚠️ Partially supported</h4>"; g.partial.forEach(function (m) { h += "<div class='pp-row'><b>" + esc(m.requirement) + "</b> — " + esc(m.note || "") + "</div>"; }); }
+        h += _list("🚩 Unsupported / exaggerated claims to fix", g.unsupported_claims);
+        h += _list("❌ Real gaps (you'd need to actually learn these)", g.real_gaps);
+        h += _list("🔍 Just missing proof (you likely can — add evidence)", g.missing_proof);
+        if (g.bullet_to_change && (g.bullet_to_change.current || g.bullet_to_change.suggested)) {
+            h += "<h4>✏️ Rewrite this bullet</h4><div class='pp-row'><s>" + esc(g.bullet_to_change.current || "") + "</s><br><b>→ " + esc(g.bullet_to_change.suggested || "") + "</b></div>";
+        }
+        if (g.project_improvement) h += "<h4>🚀 One improvement that would strengthen you most</h4><div class='pp-row'>" + esc(g.project_improvement) + "</div>";
+        if (g.interview_ready) {
+            var ir = g.interview_ready;
+            h += "<h4>🎤 Interview readiness</h4><div class='pp-row'>" + (ir.ready ? "✅ Ready to defend" : "⚠️ Not fully ready") + " — " + esc(ir.note || "") + "</div>";
+        }
         out.innerHTML = h;
     }
 
