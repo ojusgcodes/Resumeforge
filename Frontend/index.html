@@ -2661,6 +2661,14 @@ if (!data.resume) {
 document.getElementById("result").innerHTML = `
     <div class="result-layout">
     <div class="result-main">
+
+    <div class="primary-actions fade-in">
+        <h3 class="primary-actions-title">✅ Your resume is ready — pick your next move</h3>
+        <button id="openApplyHubBtn" class="hub-open-btn">🚀 Apply to Jobs — find roles &amp; apply</button>
+        <button id="openProofBtn" class="hub-open-btn hub-green">🔬 Proof &amp; Prep — make every claim defensible</button>
+        <button id="openVaultBtn" class="hub-open-btn hub-brown">🗄️ Career Evidence Vault — proof-backed, job-ready resumes</button>
+    </div>
+
     <div class="github-analysis fade-in">
 
         <h3>
@@ -2693,18 +2701,19 @@ document.getElementById("result").innerHTML = `
 
     </div>
 
-    <div class="resume-card fade-in">
+    <div class="resume-card resume-card--compact fade-in">
 
         <h2>Generated Resume</h2>
 
-        <div class="resume-content" id="resumeContent">
+        <p class="resume-preview-sub">Your full resume text is ready — open it in a clean, full-screen viewer.</p>
+
+        <button id="seeTextPreviewBtn" class="pdf-btn resume-preview-open">📄 Click to see the text preview</button>
+
+        <div class="resume-content" id="resumeContent" hidden>
             ${formatResumeHTML(data.resume)}
         </div>
 
     </div>
-    <button id="openApplyHubBtn" class="hub-open-btn">🚀 Apply to Jobs — find roles &amp; apply</button>
-    <button id="openProofBtn" class="hub-open-btn" style="background:#1d7a4d !important;margin-top:10px;">🔬 Proof &amp; Prep — make every claim defensible</button>
-    <button id="openVaultBtn" class="hub-open-btn" style="background:#6b4a2b !important;margin-top:10px;">🗄️ Career Evidence Vault — proof-backed, job-ready resumes</button>
     </div>
 
     <div class="result-tools">
@@ -5367,6 +5376,101 @@ function formatResumeHTML(text) {
         const dark = document.body.classList.toggle("dark-mode");
         try { localStorage.setItem("rf_theme", dark ? "dark" : "light"); } catch (e) {}
         sync();
+    });
+})();
+</script>
+
+<!-- ===== Prominent CTAs + text-preview viewer (added) ===== -->
+<style>
+    /* Big, clear primary action buttons at the top of the results */
+    .primary-actions {
+        background: #fff;
+        border: 1px solid var(--border, #e6ddce);
+        border-radius: 16px;
+        padding: 20px 20px 22px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, .12);
+        margin: 0 0 18px;
+    }
+    .primary-actions-title {
+        margin: 0 0 4px;
+        color: var(--accent, #9a3b1c);
+        font-size: 1.12rem;
+        font-weight: 800;
+    }
+    .hub-open-btn { box-shadow: 0 6px 16px rgba(0, 0, 0, .15); transition: transform .15s ease, box-shadow .15s ease; }
+    .hub-open-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(0, 0, 0, .22); }
+    .hub-open-btn.hub-green { background: #1d7a4d !important; }
+    .hub-open-btn.hub-brown { background: #6b4a2b !important; }
+
+    /* Compact resume card — text is now behind a button */
+    .resume-card--compact { padding: 30px 32px !important; text-align: center; }
+    .resume-card--compact h2 { margin-bottom: 8px; }
+    .resume-preview-sub { color: #555; margin: 0 auto 18px; max-width: 520px; }
+    .resume-preview-open { font-size: 1.05rem; padding: 15px 30px; }
+
+    /* Full-screen text preview modal */
+    .rp-overlay { position: fixed; inset: 0; z-index: 600; display: none; align-items: center; justify-content: center; padding: 24px; }
+    .rp-overlay.open { display: flex; }
+    .rp-backdrop { position: absolute; inset: 0; background: rgba(10, 8, 6, .6); backdrop-filter: blur(3px); }
+    .rp-modal { position: relative; background: #fff; color: #111; width: min(860px, 96vw); max-height: 88vh; border-radius: 16px; display: flex; flex-direction: column; box-shadow: 0 25px 70px rgba(0, 0, 0, .4); overflow: hidden; }
+    .rp-head { display: flex; align-items: center; justify-content: space-between; padding: 15px 22px; background: var(--accent, #9a3b1c); color: #fff; }
+    .rp-title { font-weight: 700; font-size: 1.05rem; }
+    .rp-x { background: transparent; border: 0; color: #fff; font-size: 1.9rem; line-height: 1; cursor: pointer; padding: 0 4px; }
+    .rp-body { padding: 34px 40px; overflow: auto; background: #fff; }
+    .rp-body .resume-content { color: #111827; }
+    .rp-foot { display: flex; gap: 12px; justify-content: flex-end; padding: 14px 22px; border-top: 1px solid #eee; background: #faf8f4; }
+    @media (max-width: 620px) { .rp-body { padding: 22px 20px; } }
+</style>
+
+<div id="resumePreviewModal" class="rp-overlay" aria-hidden="true">
+    <div class="rp-backdrop" data-rp-close></div>
+    <div class="rp-modal" role="dialog" aria-modal="true" aria-label="Resume text preview">
+        <div class="rp-head">
+            <span class="rp-title">📄 Resume — Text Preview</span>
+            <button class="rp-x" id="rpCloseBtn" data-rp-close aria-label="Close">&times;</button>
+        </div>
+        <div class="rp-body"><div class="resume-content" id="rpBody"></div></div>
+        <div class="rp-foot">
+            <button class="pdf-btn" id="rpCopyBtn">📋 Copy Text</button>
+            <button class="pdf-btn" data-rp-close style="background:#555;">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Text-preview viewer: opens the generated resume in a separate full-screen modal.
+(function () {
+    function openPreview() {
+        var src = document.getElementById("resumeContent");
+        var body = document.getElementById("rpBody");
+        var modal = document.getElementById("resumePreviewModal");
+        if (!body || !modal) return;
+        body.innerHTML = src ? src.innerHTML : (window.__resumeText || "");
+        modal.classList.add("open");
+        modal.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+    }
+    function closePreview() {
+        var modal = document.getElementById("resumePreviewModal");
+        if (!modal) return;
+        modal.classList.remove("open");
+        modal.setAttribute("aria-hidden", "true");
+        document.body.style.overflow = "";
+    }
+    document.addEventListener("click", function (e) {
+        var t = e.target;
+        if (t.closest && t.closest("#seeTextPreviewBtn")) { e.preventDefault(); openPreview(); return; }
+        if (t.closest && t.closest("[data-rp-close]")) { closePreview(); return; }
+        if (t.id === "rpCopyBtn") {
+            var txt = window.__resumeText || ((document.getElementById("rpBody") || {}).innerText || "");
+            if (navigator.clipboard) navigator.clipboard.writeText(txt);
+            t.textContent = "✓ Copied";
+            setTimeout(function () { t.textContent = "📋 Copy Text"; }, 1500);
+            return;
+        }
+    });
+    document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") closePreview();
     });
 })();
 </script>
