@@ -106,6 +106,8 @@ RL_PATHS = {
     "/skill-roadmap", "/quality-gate", "/recruiter-page",
     "/evidence/import-github", "/evidence-map", "/evidence-resume",
     "/evidence-quality-gate",
+    "/interview-prep", "/interview-prep/ask",
+    "/mock-interview/next", "/mock-interview/report",
 }
 RL_MAX = int(os.getenv("RATE_LIMIT_MAX", "30"))      # requests
 RL_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
@@ -1341,6 +1343,275 @@ Make the plan 5-7 days, practical, and buildable on GitHub with a free deploy (V
     if not parsed:
         return {"success": False, "error": "Could not build the roadmap. Please try again."}
     return {"success": True, "roadmap": parsed}
+
+
+# ============================================================
+# INTERVIEW PREP — turn a job description into a learning plan +
+# curated, REAL resources. The model only picks the *topics*; every
+# link is either a guaranteed-valid search URL or a real result from
+# the free arXiv API — so links never 404 or get hallucinated.
+# ============================================================
+import urllib.parse as _urlparse
+import xml.etree.ElementTree as _ET
+
+
+def _yt_search(q):
+    return "https://www.youtube.com/results?search_query=" + _urlparse.quote_plus(q or "")
+
+
+def _scholar_search(q):
+    return "https://scholar.google.com/scholar?q=" + _urlparse.quote_plus(q or "")
+
+
+def _google_search(q):
+    return "https://www.google.com/search?q=" + _urlparse.quote_plus(q or "")
+
+
+def _topic_resources(name):
+    name = name or ""
+    return [
+        {"label": "Google", "url": _google_search(name + " tutorial")},
+        {"label": "GeeksforGeeks", "url": "https://www.geeksforgeeks.org/search/?gq=" + _urlparse.quote_plus(name)},
+        {"label": "freeCodeCamp", "url": "https://www.freecodecamp.org/news/search/?query=" + _urlparse.quote_plus(name)},
+        {"label": "Dev.to", "url": "https://dev.to/search?q=" + _urlparse.quote_plus(name)},
+        {"label": "Google Scholar", "url": _scholar_search(name)},
+    ]
+
+
+def _fetch_arxiv(query, max_results=5):
+    """Real papers from the free arXiv API (no key): title, abstract page, PDF link."""
+    out = []
+    q = (query or "").strip()
+    if not q:
+        return out
+    try:
+        url = ("https://export.arxiv.org/api/query?search_query="
+               + _urlparse.quote_plus("all:" + q)
+               + "&start=0&max_results=" + str(max_results) + "&sortBy=relevance")
+        r = requests.get(url, timeout=10, headers={"User-Agent": "ResumeForge/1.0 (interview-prep)"})
+        if r.status_code != 200:
+            return out
+        ns = {"a": "http://www.w3.org/2005/Atom"}
+        root = _ET.fromstring(r.text)
+        for e in root.findall("a:entry", ns):
+            title = (e.findtext("a:title", default="", namespaces=ns) or "").strip().replace("\n", " ")
+            summary = (e.findtext("a:summary", default="", namespaces=ns) or "").strip().replace("\n", " ")
+            abs_url, pdf_url = "", ""
+            for link in e.findall("a:link", ns):
+                href = link.get("href", "")
+                if link.get("title") == "pdf" or link.get("type") == "application/pdf":
+                    pdf_url = href
+                elif link.get("rel") == "alternate":
+                    abs_url = href
+            if not pdf_url and abs_url:
+                pdf_url = abs_url.replace("/abs/", "/pdf/")
+            authors = [a.findtext("a:name", default="", namespaces=ns) for a in e.findall("a:author", ns)]
+            authors = [a for a in authors if a]
+            out.append({
+                "title": title,
+                "url": abs_url or pdf_url,
+                "pdf_url": pdf_url,
+                "authors": ", ".join(authors[:4]),
+                "summary": summary[:280],
+            })
+    except Exception as e:
+        print("arxiv fetch error:", str(e))
+    return out
+
+
+class InterviewPrepRequest(BaseModel):
+    job_description: str = ""
+    role: str = ""
+    resume: str = ""
+
+
+@app.post("/interview-prep")
+def interview_prep(data: InterviewPrepRequest):
+    jd = (data.job_description or "").strip()
+    role = (data.role or "").strip()
+    if not jd and not role:
+        return {"success": False, "error": "Paste a job description (or give a target role) to build your prep plan."}
+    prompt = f"""You are a technical interview coach. From the JOB DESCRIPTION (and optional resume),
+extract exactly what the candidate must LEARN to do well in interviews for this role.
+JOB DESCRIPTION:
+{jd[:3000]}
+TARGET ROLE: {role or "(infer from the JD)"}
+RESUME (optional, so you can skip what they already clearly know):
+{(data.resume or '')[:1500]}
+Return ONLY JSON:
+{{"role":"the role title","summary":"3-5 sentence summary of what to focus on learning and why",
+"topics":[{{"name":"specific topic/skill","why":"why it matters for THIS role","level":"core|important|nice-to-have",
+"search_query":"best short YouTube search phrase to learn it"}}],
+"paper_keywords":["2-4 technical keywords for finding research papers"]}}
+Give 6-10 topics, ordered most-important first. Be specific to the JD, not generic."""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("interview-prep error:", str(e))
+        return {"success": False, "error": "Could not analyze the job description. Please try again."}
+    if not parsed:
+        return {"success": False, "error": "Could not analyze the job description. Please try again."}
+    topics_out = []
+    for t in (parsed.get("topics") or [])[:12]:
+        name = (t.get("name") or "").strip()
+        if not name:
+            continue
+        q = (t.get("search_query") or (name + " tutorial")).strip()
+        topics_out.append({
+            "name": name,
+            "why": t.get("why", ""),
+            "level": t.get("level", "important"),
+            "youtube": _yt_search(q),
+            "resources": _topic_resources(name),
+        })
+    kws = parsed.get("paper_keywords") or []
+    if not kws:
+        kws = [t["name"] for t in topics_out[:3]]
+    papers, seen = [], set()
+    for kw in kws[:3]:
+        for p in _fetch_arxiv(kw, max_results=4):
+            if not p.get("url") or p["url"] in seen:
+                continue
+            seen.add(p["url"])
+            papers.append(p)
+    return {
+        "success": True,
+        "role": parsed.get("role") or role,
+        "summary": parsed.get("summary", ""),
+        "topics": topics_out,
+        "papers": papers[:8],
+        "scholar": _scholar_search(((role or parsed.get("role") or "") + " " + " ".join(kws[:2])).strip()),
+    }
+
+
+class InterviewAskRequest(BaseModel):
+    message: str = ""
+    job_description: str = ""
+    topic: str = ""
+
+
+@app.post("/interview-prep/ask")
+def interview_prep_ask(data: InterviewAskRequest):
+    msg = (data.message or "").strip()
+    topic = (data.topic or "").strip()
+    if not msg and not topic:
+        return {"success": False, "error": "Ask a question or pick a topic."}
+    prompt = f"""You are a patient interview tutor helping a candidate prepare for a role.
+JOB DESCRIPTION (context): {(data.job_description or '')[:1500]}
+The candidate says: "{msg or ('Explain this topic: ' + topic)}"
+Explain it clearly and simply (like teaching a student), then give the single best short search phrase
+to find more material on exactly what they asked.
+Return ONLY JSON: {{"answer":"clear explanation, 4-8 sentences","search_query":"short phrase","keyword":"1-3 technical words for research papers"}}"""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("interview-prep ask error:", str(e))
+        parsed = {}
+    sq = parsed.get("search_query") or msg or topic
+    kw = parsed.get("keyword") or topic or msg
+    return {
+        "success": True,
+        "answer": parsed.get("answer") or "Here are more resources on that topic.",
+        "youtube": _yt_search(sq),
+        "resources": _topic_resources(sq),
+        "papers": _fetch_arxiv(kw, max_results=5),
+    }
+
+
+# ============================================================
+# LIVE MOCK INTERVIEW — adaptive, spoken. The frontend runs the voice
+# loop (Web Speech API: speak the question, listen to the answer); the
+# backend just decides the NEXT question (reacting to answers) and, at
+# the end, scores the whole transcript.
+# ============================================================
+class MockNextRequest(BaseModel):
+    role: str = ""
+    job_description: str = ""
+    resume: str = ""
+    topics: List[str] = []
+    history: list = []            # [{"q": "...", "a": "..."}]
+    max_questions: int = 6
+
+
+@app.post("/mock-interview/next")
+def mock_interview_next(data: MockNextRequest):
+    hist = data.history or []
+    asked = len(hist)
+    max_q = max(3, min(int(data.max_questions or 6), 12))
+    if asked >= max_q:
+        return {"success": True, "done": True, "index": asked}
+    convo = ""
+    for i, turn in enumerate(hist[-6:], 1):
+        convo += f"Q{i}: {str(turn.get('q', ''))[:400]}\nA{i}: {str(turn.get('a', ''))[:600]}\n"
+    topics = ", ".join([str(t) for t in (data.topics or [])][:12])
+    prompt = f"""You are a friendly but rigorous technical interviewer running a SPOKEN mock interview.
+Ask ONE next question, phrased naturally to be spoken aloud (short, conversational, no markdown, no numbering).
+ROLE: {data.role or '(infer from the JD)'}
+JOB DESCRIPTION:
+{(data.job_description or '')[:1800]}
+FOCUS TOPICS (from the candidate's prep): {topics or '(use the JD)'}
+CANDIDATE RESUME (for resume-defense questions):
+{(data.resume or '')[:1200]}
+CONVERSATION SO FAR:
+{convo or '(this is the first question — start with a warm, simple opener)'}
+Rules:
+- If the last answer was vague, shallow, or notable, ask a natural FOLLOW-UP that digs deeper.
+- Otherwise move to a new area. Across the whole interview, mix technical (from the topics/JD),
+  resume-defense (probe a specific claim), and one behavioral question.
+- This is question {asked + 1} of about {max_q}. Ask exactly ONE question.
+Return ONLY JSON: {{"question":"the spoken question","kind":"technical|resume|behavioral|followup"}}"""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("mock-interview next error:", str(e))
+        parsed = {}
+    q = (parsed.get("question") or "").strip()
+    if not q:
+        q = "Walk me through a project on your resume and the hardest problem you had to solve in it."
+    return {"success": True, "done": False, "index": asked, "question": q, "kind": parsed.get("kind", "technical")}
+
+
+class MockReportRequest(BaseModel):
+    role: str = ""
+    job_description: str = ""
+    resume: str = ""
+    transcript: list = []          # [{"q": "...", "a": "..."}]
+
+
+@app.post("/mock-interview/report")
+def mock_interview_report(data: MockReportRequest):
+    tr = data.transcript or []
+    if not tr:
+        return {"success": False, "error": "No interview to score yet."}
+    convo = ""
+    for i, t in enumerate(tr, 1):
+        convo += f"Q{i}: {str(t.get('q', ''))[:400]}\nA{i}: {str(t.get('a', ''))[:800]}\n\n"
+    prompt = f"""You are an interview coach. Score this mock interview for the role below — fairly, kindly,
+and specifically. Judge each answer for correctness, clarity, and depth, and whether it is consistent with
+the resume (flag anything that sounds exaggerated).
+ROLE: {data.role or '(infer)'}
+JOB DESCRIPTION:
+{(data.job_description or '')[:1500]}
+RESUME:
+{(data.resume or '')[:1200]}
+TRANSCRIPT:
+{convo[:6000]}
+Return ONLY JSON:
+{{"overall_score":0-100,"verdict":"one-line overall assessment",
+"per_question":[{{"q":"the question","score":0-100,"feedback":"specific, kind, actionable"}}],
+"strengths":["..."],"gaps":["..."],"study_next":["concrete things to study or practice next"]}}"""
+    try:
+        resp = model.generate_content(prompt)
+        parsed = _extract_json(resp.text or "") or {}
+    except Exception as e:
+        print("mock-interview report error:", str(e))
+        return {"success": False, "error": "Could not score the interview. Please try again."}
+    if not parsed:
+        return {"success": False, "error": "Could not score the interview. Please try again."}
+    return {"success": True, "report": parsed}
 
 
 # ---- #4 Application Quality Gate: apply / improve / skip ----

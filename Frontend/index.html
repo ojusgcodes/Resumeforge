@@ -2667,6 +2667,7 @@ document.getElementById("result").innerHTML = `
         <button id="openApplyHubBtn" class="hub-open-btn">🚀 Apply to Jobs — find roles &amp; apply</button>
         <button id="openProofBtn" class="hub-open-btn hub-green">🔬 Proof &amp; Prep — make every claim defensible</button>
         <button id="openVaultBtn" class="hub-open-btn hub-brown">🗄️ Career Evidence Vault — proof-backed, job-ready resumes</button>
+        <button id="openInterviewBtn" class="hub-open-btn hub-navy">🎤 Interview Prep — learn exactly what this job needs</button>
     </div>
 
     <div class="github-analysis fade-in">
@@ -5472,6 +5473,328 @@ function formatResumeHTML(text) {
     document.addEventListener("keydown", function (e) {
         if (e.key === "Escape") closePreview();
     });
+})();
+</script>
+
+<!-- ===== Interview Prep — dedicated learning hub (added) ===== -->
+<style>
+.hub-open-btn.hub-navy{ background:#26415e !important; }
+.iv-overlay{ position:fixed; inset:0; z-index:620; background:var(--cream,#f7f5ef); overflow-y:auto; display:none; }
+.iv-overlay.open{ display:block; }
+.iv-head{ position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 22px; background:var(--accent,#9a3b1c); color:#fff; }
+.iv-head h2{ margin:0; font-size:1.3rem; } .iv-head p{ margin:2px 0 0; font-size:.9rem; opacity:.9; }
+.iv-x{ background:transparent; border:0; color:#fff; font-size:2rem; line-height:1; cursor:pointer; padding:0 4px; }
+.iv-wrap{ max-width:820px; margin:0 auto; padding:22px 18px 60px; }
+.iv-card{ background:#fff; border:1px solid var(--border,#e6ddce); border-radius:14px; padding:20px 22px; margin-bottom:16px; box-shadow:0 6px 18px rgba(0,0,0,.06); }
+.iv-card h3{ margin:0 0 6px; color:var(--accent,#9a3b1c); font-size:1.1rem; }
+.iv-sub{ color:#6b5b4a; font-size:.9rem; margin:0 0 12px; }
+.iv-input,.iv-ta{ width:100%; box-sizing:border-box; border:1px solid var(--border,#e6ddce); border-radius:9px; padding:11px 12px; font-family:inherit; font-size:.95rem; margin-bottom:10px; background:#fff; color:#1c1712; }
+.iv-ta{ min-height:120px; resize:vertical; }
+.iv-inrow{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+.iv-inrow .iv-input{ flex:1; min-width:160px; margin-bottom:0; }
+.iv-btn{ background:var(--accent,#9a3b1c); color:#fff; border:0; border-radius:9px; padding:12px 20px; font-size:1rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block; }
+.iv-btn:hover{ filter:brightness(1.06); } .iv-btn.sm{ padding:8px 14px; font-size:.88rem; font-weight:600; }
+.iv-btn.ghost{ background:#fff; color:var(--accent,#9a3b1c); border:1px solid var(--accent,#9a3b1c); }
+.iv-msg{ font-size:.9rem; color:#6b5b4a; margin-top:6px; min-height:18px; }
+.iv-summary{ font-size:1rem; line-height:1.6; color:#2b2b2b; } .iv-more{ margin-top:10px; font-size:.88rem; color:#6b5b4a; }
+.iv-link{ color:var(--accent,#9a3b1c); font-weight:600; }
+.iv-menu{ display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 16px; }
+.iv-tab{ background:#fff; border:1px solid var(--border,#e6ddce); border-radius:999px; padding:9px 16px; cursor:pointer; font-size:.92rem; font-weight:600; color:#5b4a38; }
+.iv-tab.active{ background:var(--accent,#9a3b1c); color:#fff; border-color:var(--accent,#9a3b1c); }
+.iv-topic,.iv-paper{ background:#fff; border:1px solid var(--border,#e6ddce); border-radius:12px; padding:15px 17px; margin-bottom:12px; }
+.iv-topic-h{ display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+.iv-topic-name{ font-weight:700; font-size:1.02rem; color:#2b2b2b; }
+.iv-why{ color:#5b4a38; font-size:.92rem; margin:2px 0 10px; }
+.iv-badge{ font-size:.72rem; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:999px; }
+.iv-badge.core{ background:#fdeaea; color:#c0392b; } .iv-badge.imp{ background:#fff2d8; color:#9a6a00; } .iv-badge.nice{ background:#eef0f2; color:#5b6470; }
+.iv-chips{ display:flex; gap:7px; flex-wrap:wrap; margin-top:10px; }
+.iv-chip{ background:#f4efe7; border:1px solid var(--border,#e6ddce); border-radius:999px; padding:5px 11px; font-size:.82rem; color:#5b4a38; text-decoration:none; }
+.iv-chip.pdf{ background:#eaf5ee; color:#1d7a4d; border-color:#bfe3cd; font-weight:700; }
+.iv-paper-t{ font-weight:700; color:#26415e; } .iv-paper-a{ font-size:.82rem; color:#6b5b4a; margin-top:2px; }
+.iv-paper-s{ font-size:.88rem; color:#4a4a4a; margin:6px 0 0; }
+.iv-asklog{ max-height:340px; overflow:auto; margin-bottom:12px; display:flex; flex-direction:column; gap:10px; }
+.iv-msg-u{ align-self:flex-end; background:var(--accent,#9a3b1c); color:#fff; padding:9px 13px; border-radius:12px 12px 2px 12px; max-width:85%; font-size:.92rem; }
+.iv-msg-a{ align-self:flex-start; background:#f4efe7; color:#2b2b2b; padding:11px 14px; border-radius:12px 12px 12px 2px; max-width:92%; font-size:.92rem; line-height:1.5; }
+@media(max-width:600px){ .iv-wrap{ padding:16px 12px 50px; } }
+</style>
+
+<div id="interviewPanel" class="iv-overlay" aria-hidden="true">
+  <div class="iv-head">
+    <div><h2>🎤 Interview Prep</h2><p>Turn a job description into exactly what to learn — free videos, papers &amp; PDFs.</p></div>
+    <button class="iv-x" id="ivClose" aria-label="Close">&times;</button>
+  </div>
+  <div class="iv-wrap">
+    <div class="iv-card" id="ivInputCard">
+      <h3>1. Add the job description</h3>
+      <p class="iv-sub">Paste a JD, or load one from your last job search. We analyze it and build your prep plan.</p>
+      <div class="iv-inrow">
+        <input id="ivRole" class="iv-input" placeholder="Target role (optional, e.g. Frontend Developer)">
+        <button id="ivLoadJobs" class="iv-btn ghost">📥 Load from my job search</button>
+      </div>
+      <select id="ivJobPick" class="iv-input" style="display:none;"></select>
+      <textarea id="ivJd" class="iv-ta" placeholder="Paste the job description here…"></textarea>
+      <button id="ivAnalyze" class="iv-btn">✨ Analyze &amp; build my prep</button>
+      <div id="ivInputMsg" class="iv-msg"></div>
+    </div>
+    <div id="ivResults" style="display:none;">
+      <div class="iv-card" id="ivSummaryCard"></div>
+      <div class="iv-menu">
+        <button class="iv-tab active" data-sec="topics">📺 Topics &amp; Videos</button>
+        <button class="iv-tab" data-sec="papers">📄 Papers &amp; PDFs</button>
+        <button class="iv-tab" data-sec="ask">💬 Ask AI</button>
+        <button class="iv-tab" data-sec="interview">🎙️ Mock Interview</button>
+      </div>
+      <div class="iv-sec" id="ivSecTopics"></div>
+      <div class="iv-sec" id="ivSecPapers" style="display:none;"></div>
+      <div class="iv-sec" id="ivSecAsk" style="display:none;">
+        <div class="iv-card">
+          <h3>Ask AI about anything in this job</h3>
+          <p class="iv-sub">e.g. "I didn't understand React hooks — explain it and give me more PDFs."</p>
+          <div id="ivAskLog" class="iv-asklog"></div>
+          <div class="iv-inrow">
+            <input id="ivAskInput" class="iv-input" placeholder="Type your question…">
+            <button id="ivAskSend" class="iv-btn">Send</button>
+          </div>
+        </div>
+      </div>
+      <div class="iv-sec" id="ivSecInterview" style="display:none;">
+        <div class="iv-card" id="ivMockIntro">
+          <h3>🎙️ Live Mock Interview</h3>
+          <p class="iv-sub">The AI interviewer <b>speaks</b> questions built from this job and your prep, and <b>listens</b> to your spoken answers in real time — then gives you a scorecard. Best in Chrome/Edge; you can also type your answers.</p>
+          <label class="iv-vs"><input type="checkbox" id="ivMockVoice" checked> AI speaks &amp; listens (voice)</label>
+          <div id="ivMockSupport" class="iv-msg"></div>
+          <button id="ivMockStart" class="iv-btn">🎙️ Start Interview</button>
+        </div>
+        <div class="iv-card" id="ivMockLive" style="display:none;">
+          <div class="iv-mock-top"><span id="ivMockProgress" class="iv-badge imp">Question 1</span><button id="ivMockEnd" class="iv-btn ghost sm">End &amp; Score</button></div>
+          <div class="iv-mock-q" id="ivMockQ">…</div>
+          <div class="iv-mock-status iv-msg" id="ivMockStatus"></div>
+          <textarea id="ivMockTyped" class="iv-ta" placeholder="Your answer appears here as you speak — or type it."></textarea>
+          <div class="iv-inrow">
+            <button id="ivMockMic" class="iv-btn sm">🎤 Start answering</button>
+            <button id="ivMockSubmit" class="iv-btn">Submit answer ➜</button>
+            <button id="ivMockRepeat" class="iv-btn ghost sm">🔁 Repeat</button>
+          </div>
+        </div>
+        <div class="iv-card" id="ivMockReport" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Interview Prep: JD -> learning summary + real videos/papers/PDFs + Ask-AI tutor.
+(function () {
+  var IV_API = (location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.protocol === "file:")
+    ? "http://localhost:8000" : "https://resumeforge-backend-1bu3.onrender.com";
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  var state = { jd:"", role:"" };
+  function openP(){ var o=$("interviewPanel"); if(!o) return; o.classList.add("open"); o.setAttribute("aria-hidden","false"); document.body.style.overflow="hidden";
+    if(!$("ivRole").value && window.__resumeMeta && window.__resumeMeta.role){ $("ivRole").value = window.__resumeMeta.role; } }
+  function closeP(){ var o=$("interviewPanel"); if(!o) return; o.classList.remove("open"); o.setAttribute("aria-hidden","true"); document.body.style.overflow=""; }
+  function api(path, body){ return fetch(IV_API+path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)}).then(function(r){ return r.json(); }); }
+  function chips(resources){ if(!resources||!resources.length) return ""; return '<div class="iv-chips">'+resources.map(function(r){ return '<a class="iv-chip" href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.label)+' ↗</a>'; }).join("")+'</div>'; }
+  function renderSummary(d){ $("ivSummaryCard").innerHTML = '<h3>📌 What you need to learn'+(d.role?' — '+esc(d.role):'')+'</h3>'
+      + '<p class="iv-summary">'+esc(d.summary||"")+'</p>'
+      + (d.scholar?'<div class="iv-more">More: <a class="iv-link" href="'+esc(d.scholar)+'" target="_blank" rel="noopener">Search Google Scholar ↗</a></div>':''); }
+  function badge(l){ l=(l||"important").toLowerCase(); var c=l.indexOf("core")>=0?"core":(l.indexOf("nice")>=0?"nice":"imp"); return '<span class="iv-badge '+c+'">'+esc(l)+'</span>'; }
+  function renderTopics(topics){
+    if(!topics||!topics.length){ $("ivSecTopics").innerHTML='<div class="iv-card">No topics found — try a fuller job description.</div>'; return; }
+    $("ivSecTopics").innerHTML = topics.map(function(t){
+      return '<div class="iv-topic"><div class="iv-topic-h"><span class="iv-topic-name">'+esc(t.name)+'</span>'+badge(t.level)+'</div>'
+        + (t.why?'<p class="iv-why">'+esc(t.why)+'</p>':'')
+        + '<a class="iv-btn sm" href="'+esc(t.youtube)+'" target="_blank" rel="noopener">▶ Watch free videos on YouTube ↗</a>'
+        + chips(t.resources) + '</div>';
+    }).join("");
+  }
+  function renderPapers(papers, scholar){
+    if(!papers||!papers.length){ $("ivSecPapers").innerHTML='<div class="iv-card">No papers fetched right now'+(scholar?' — <a class="iv-link" href="'+esc(scholar)+'" target="_blank" rel="noopener">search Google Scholar ↗</a>':'')+'.</div>'; return; }
+    $("ivSecPapers").innerHTML = papers.map(function(p){
+      return '<div class="iv-paper"><div class="iv-paper-t">'+esc(p.title)+'</div>'
+        + (p.authors?'<div class="iv-paper-a">'+esc(p.authors)+'</div>':'')
+        + (p.summary?'<p class="iv-paper-s">'+esc(p.summary)+'…</p>':'')
+        + '<div class="iv-chips">'
+        + (p.url?'<a class="iv-chip" href="'+esc(p.url)+'" target="_blank" rel="noopener">Abstract ↗</a>':'')
+        + (p.pdf_url?'<a class="iv-chip pdf" href="'+esc(p.pdf_url)+'" target="_blank" rel="noopener">PDF ↓</a>':'')
+        + '</div></div>';
+    }).join("");
+  }
+  function showSec(sec){
+    ["Topics","Papers","Ask","Interview"].forEach(function(s){ var el=$("ivSec"+s); if(el) el.style.display=(s.toLowerCase()===sec?"block":"none"); });
+    var tabs=document.querySelectorAll("#interviewPanel .iv-tab"); for(var i=0;i<tabs.length;i++){ tabs[i].classList.toggle("active", tabs[i].getAttribute("data-sec")===sec); }
+  }
+  function analyze(){
+    var jd=($("ivJd").value||"").trim(), role=($("ivRole").value||"").trim();
+    if(!jd && !role){ $("ivInputMsg").innerHTML='⚠️ Paste a job description (or enter a role) first.'; return; }
+    state.jd=jd; state.role=role;
+    $("ivInputMsg").innerHTML='⏳ Analyzing the job description…';
+    api("/interview-prep", {job_description:jd, role:role, resume:(window.__resumeText||"")}).then(function(d){
+      if(!d||!d.success){ $("ivInputMsg").innerHTML='⚠️ '+esc((d&&d.error)||"Could not analyze. Try again."); return; }
+      $("ivInputMsg").innerHTML="";
+      window.__ivPrep = { jd: jd, role: (d.role || role || ""), topics: (d.topics || []).map(function(t){ return t.name; }) };
+      renderSummary(d); renderTopics(d.topics); renderPapers(d.papers, d.scholar);
+      $("ivResults").style.display="block"; showSec("topics");
+      $("ivResults").scrollIntoView({behavior:"smooth", block:"start"});
+    }).catch(function(){ $("ivInputMsg").innerHTML="⚠️ Couldn't reach the server. Is the backend awake?"; });
+  }
+  function loadJobs(){
+    var jobs=window.__lastJobs;
+    if(!jobs||!jobs.length){ $("ivInputMsg").innerHTML='ℹ️ No job search yet — open "Apply to Jobs", search, then come back. Or just paste a JD.'; return; }
+    var sel=$("ivJobPick");
+    sel.innerHTML='<option value="">— pick a job you searched —</option>'+jobs.map(function(j,i){ return '<option value="'+i+'">'+esc((j.title||"Job")+" — "+(j.company||""))+'</option>'; }).join("");
+    sel.style.display="block"; $("ivInputMsg").innerHTML="";
+  }
+  function pickJob(i){
+    var jobs=window.__lastJobs||[]; var j=jobs[parseInt(i,10)]; if(!j) return;
+    if(j.title && !$("ivRole").value) $("ivRole").value=j.title;
+    $("ivJd").value=(j.snippet||"")+(j.url?("\n\nSource: "+j.url):"");
+    $("ivInputMsg").innerHTML='ℹ️ Loaded "'+esc(j.title||"")+'". Tip: paste the full JD for sharper results.';
+  }
+  function ask(){
+    var inp=$("ivAskInput"); var msg=(inp.value||"").trim(); if(!msg) return; inp.value="";
+    var log=$("ivAskLog");
+    log.insertAdjacentHTML("beforeend", '<div class="iv-msg-u">'+esc(msg)+'</div>');
+    var loading=document.createElement("div"); loading.className="iv-msg-a"; loading.innerHTML="⏳ Thinking…"; log.appendChild(loading); log.scrollTop=log.scrollHeight;
+    api("/interview-prep/ask", {message:msg, job_description:state.jd}).then(function(d){
+      var h=esc((d&&d.answer)||"Here are some resources.");
+      if(d&&d.youtube) h+='<div style="margin-top:8px;"><a class="iv-btn sm" href="'+esc(d.youtube)+'" target="_blank" rel="noopener">▶ Videos on YouTube ↗</a></div>';
+      if(d&&d.resources) h+=chips(d.resources);
+      if(d&&d.papers&&d.papers.length){ h+='<div class="iv-more">More PDFs:</div>'; d.papers.forEach(function(p){ h+='<div class="iv-chips">'+(p.pdf_url?'<a class="iv-chip pdf" href="'+esc(p.pdf_url)+'" target="_blank" rel="noopener">PDF: '+esc((p.title||"paper").slice(0,52))+' ↓</a>':(p.url?'<a class="iv-chip" href="'+esc(p.url)+'" target="_blank" rel="noopener">'+esc((p.title||"paper").slice(0,52))+' ↗</a>':''))+'</div>'; }); }
+      loading.innerHTML=h; log.scrollTop=log.scrollHeight;
+    }).catch(function(){ loading.innerHTML="⚠️ Could not reach the tutor. Try again."; });
+  }
+  document.addEventListener("click", function(e){
+    var t=e.target;
+    if(t.closest && t.closest("#openInterviewBtn")){ e.preventDefault(); openP(); return; }
+    if(t.id==="ivClose"){ closeP(); return; }
+    if(t.id==="ivAnalyze"){ analyze(); return; }
+    if(t.id==="ivLoadJobs"){ loadJobs(); return; }
+    if(t.id==="ivAskSend"){ ask(); return; }
+    if(t.classList && t.classList.contains("iv-tab")){ showSec(t.getAttribute("data-sec")); return; }
+  });
+  document.addEventListener("change", function(e){ if(e.target.id==="ivJobPick"){ pickJob(e.target.value); } });
+  document.addEventListener("keydown", function(e){
+    if(e.key==="Escape"){ var o=$("interviewPanel"); if(o&&o.classList.contains("open")) closeP(); }
+    if(e.key==="Enter" && e.target && e.target.id==="ivAskInput"){ e.preventDefault(); ask(); }
+  });
+})();
+</script>
+
+<!-- ===== Live Mock Interview (voice loop) ===== -->
+<style>
+.iv-vs{ display:inline-flex; align-items:center; gap:8px; font-size:.9rem; color:#5b4a38; margin-bottom:10px; }
+.iv-mock-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.iv-mock-q{ font-size:1.15rem; font-weight:700; color:#26415e; line-height:1.4; margin-bottom:8px; }
+.iv-mock-status{ min-height:20px; margin-bottom:8px; }
+.iv-bar{ height:10px; background:#eee; border-radius:6px; overflow:hidden; margin:6px 0 12px; }
+.iv-bar-f{ height:100%; }
+.iv-score{ font-size:1.05rem; }
+.iv-h4{ margin:14px 0 6px; color:var(--accent,#9a3b1c); font-size:1rem; }
+.iv-ul{ margin:0 0 6px 18px; padding:0; } .iv-ul li{ margin-bottom:4px; font-size:.92rem; color:#3a3a3a; }
+</style>
+<script>
+// Live mock interview — Web Speech API voice loop (speak the question + listen), typed fallback, adaptive Q&A, end scorecard.
+(function () {
+  var IV_API = (location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.protocol === "file:")
+    ? "http://localhost:8000" : "https://resumeforge-backend-1bu3.onrender.com";
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var synth = window.speechSynthesis;
+  var rec = null, listening = false;
+  var mock = { history: [], current: "", max: 6, voice: true };
+  function support(){
+    if(!$("ivMockSupport")) return;
+    var msgs = [];
+    if(!SR) msgs.push("mic dictation isn't supported in this browser (type your answers)");
+    if(!synth) msgs.push("text-to-speech isn't available (questions show as text)");
+    $("ivMockSupport").innerHTML = msgs.length ? ("ℹ️ " + msgs.join("; ") + ". Chrome/Edge recommended.") : "✓ Voice ready — allow mic access when asked.";
+  }
+  function prep(){ return window.__ivPrep || { jd: ($("ivJd")?$("ivJd").value:""), role: ($("ivRole")?$("ivRole").value:""), topics: [] }; }
+  function setStatus(s){ if($("ivMockStatus")) $("ivMockStatus").innerHTML = s; }
+  function speak(text, after){
+    if(!mock.voice || !synth){ if(after) after(); return; }
+    try { synth.cancel(); var u = new SpeechSynthesisUtterance(text); u.rate = 1.0; u.onend = function(){ if(after) after(); }; u.onerror = function(){ if(after) after(); }; synth.speak(u); }
+    catch(e){ if(after) after(); }
+  }
+  function startRec(){
+    if(!SR || !mock.voice) return;
+    try {
+      rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = true;
+      var base = ($("ivMockTyped").value || "");
+      rec.onresult = function(e){ var txt = ""; for(var i=e.resultIndex;i<e.results.length;i++){ txt += e.results[i][0].transcript; } $("ivMockTyped").value = (base ? base + " " : "") + txt; };
+      rec.onend = function(){ listening = false; if($("ivMockMic")) $("ivMockMic").textContent = "🎤 Resume answering"; };
+      rec.onerror = function(){ listening = false; };
+      rec.start(); listening = true; $("ivMockMic").textContent = "⏸ Pause mic";
+    } catch(e){}
+  }
+  function stopRec(){ if(rec){ try{ rec.stop(); }catch(e){} } listening = false; }
+  function toggleMic(){ if(listening){ stopRec(); $("ivMockMic").textContent = "🎤 Resume answering"; } else { startRec(); } }
+  function nextQuestion(){
+    var p = prep();
+    setStatus("⏳ Interviewer is thinking…");
+    fetch(IV_API + "/mock-interview/next", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ role:p.role, job_description:p.jd, resume:(window.__resumeText||""), topics:p.topics||[], history:mock.history, max_questions:mock.max }) })
+    .then(function(r){ return r.json(); }).then(function(d){
+      if(d && d.done){ finish(); return; }
+      if(!d || !d.question){ setStatus("⚠️ Couldn't get a question. Try End & Score."); return; }
+      mock.current = d.question;
+      $("ivMockProgress").textContent = "Question " + (mock.history.length + 1);
+      $("ivMockQ").textContent = d.question;
+      $("ivMockTyped").value = "";
+      setStatus(mock.voice ? "🔊 Speaking the question…" : "Your turn — type your answer.");
+      speak(d.question, function(){ setStatus(mock.voice ? "🎤 Listening… click Submit when you're done." : "Type your answer, then Submit."); if(mock.voice) startRec(); });
+    }).catch(function(){ setStatus("⚠️ Couldn't reach the interviewer. Is the backend awake?"); });
+  }
+  function submit(){
+    var ans = ($("ivMockTyped").value || "").trim();
+    if(!ans){ setStatus("Say or type an answer first."); return; }
+    stopRec();
+    mock.history.push({ q: mock.current, a: ans });
+    nextQuestion();
+  }
+  function start(){
+    var p = prep();
+    if(!(p.jd||"").trim() && !(p.role||"").trim()){ setStatus("Analyze a job description first (top of this panel)."); return; }
+    mock.history = []; mock.voice = $("ivMockVoice").checked; mock.max = 6;
+    $("ivMockIntro").style.display = "none"; $("ivMockReport").style.display = "none"; $("ivMockLive").style.display = "block";
+    nextQuestion();
+  }
+  function bar(score){ score = Math.max(0, Math.min(100, parseInt(score||0,10))); var c = score>=70?"#1d7a4d":(score>=45?"#9a6a00":"#c0392b"); return '<div class="iv-bar"><div class="iv-bar-f" style="width:'+score+'%;background:'+c+'"></div></div>'; }
+  function renderReport(r){
+    var h = '<h3>📊 Your interview scorecard</h3><div class="iv-score">Overall: <b>' + esc(r.overall_score) + '/100</b></div>' + bar(r.overall_score);
+    if(r.verdict) h += '<p class="iv-summary">' + esc(r.verdict) + '</p>';
+    if(r.per_question && r.per_question.length){ h += '<h4 class="iv-h4">Per question</h4>'; r.per_question.forEach(function(q){ h += '<div class="iv-topic"><div class="iv-topic-h"><span class="iv-topic-name">' + esc(q.q) + '</span><span class="iv-badge imp">' + esc(q.score) + '</span></div><p class="iv-why">' + esc(q.feedback) + '</p></div>'; }); }
+    function list(title, arr){ if(!arr || !arr.length) return ""; return '<h4 class="iv-h4">' + title + '</h4><ul class="iv-ul">' + arr.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join("") + '</ul>'; }
+    h += list("Strengths", r.strengths) + list("Gaps to close", r.gaps) + list("Study next", r.study_next);
+    h += '<button id="ivMockRestart" class="iv-btn" style="margin-top:14px;">↺ New interview</button>';
+    $("ivMockReport").innerHTML = h;
+  }
+  function finish(){
+    stopRec(); if(synth){ try{ synth.cancel(); }catch(e){} }
+    $("ivMockLive").style.display = "none";
+    var rep = $("ivMockReport"); rep.style.display = "block";
+    rep.innerHTML = '<h3>📊 Scoring your interview…</h3><p class="iv-sub">⏳ One moment.</p>';
+    var p = prep();
+    fetch(IV_API + "/mock-interview/report", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ role:p.role, job_description:p.jd, resume:(window.__resumeText||""), transcript:mock.history }) })
+    .then(function(r){ return r.json(); }).then(function(d){
+      if(!d || !d.success || !d.report){ rep.innerHTML = '<h3>📊 Report</h3><p>⚠️ ' + esc((d&&d.error)||"Could not score. Try again.") + '</p><button id="ivMockRestart" class="iv-btn">↺ New interview</button>'; return; }
+      renderReport(d.report);
+    }).catch(function(){ rep.innerHTML = '<h3>📊 Report</h3><p>⚠️ Could not reach the server.</p><button id="ivMockRestart" class="iv-btn">↺ New interview</button>'; });
+  }
+  document.addEventListener("click", function(e){
+    var t = e.target;
+    if(t.id === "ivMockStart"){ start(); return; }
+    if(t.id === "ivMockSubmit"){ submit(); return; }
+    if(t.id === "ivMockMic"){ toggleMic(); return; }
+    if(t.id === "ivMockRepeat"){ speak(mock.current); return; }
+    if(t.id === "ivMockEnd"){ if(mock.history.length){ finish(); } else { setStatus("Answer at least one question first."); } return; }
+    if(t.id === "ivMockRestart"){ $("ivMockReport").style.display = "none"; $("ivMockIntro").style.display = "block"; return; }
+  });
+  document.addEventListener("keydown", function(e){ if((e.ctrlKey||e.metaKey) && e.key === "Enter" && e.target && e.target.id === "ivMockTyped"){ e.preventDefault(); submit(); } });
+  try { support(); } catch(e){}
 })();
 </script>
 </body>
