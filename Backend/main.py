@@ -108,6 +108,7 @@ RL_PATHS = {
     "/evidence-quality-gate",
     "/interview-prep", "/interview-prep/ask",
     "/mock-interview/next", "/mock-interview/report",
+    "/proof-resume/share",
 }
 RL_MAX = int(os.getenv("RATE_LIMIT_MAX", "30"))      # requests
 RL_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
@@ -163,6 +164,7 @@ class ResumeRequest(BaseModel):
     company: str
     role: str
     linkedin_data: str = ""
+    background: str = ""
     email: str = ""
     phone: str = ""
     location: str = ""
@@ -378,6 +380,18 @@ def init_db():
             match_strength TEXT,
             explanation TEXT,
             status TEXT,
+            created_at REAL NOT NULL DEFAULT (strftime('%s','now'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS shared_proofs (
+            slug TEXT PRIMARY KEY,
+            user_id INTEGER,
+            title TEXT,
+            data TEXT NOT NULL,
+            views INTEGER NOT NULL DEFAULT 0,
             created_at REAL NOT NULL DEFAULT (strftime('%s','now'))
         )
         """
@@ -1254,6 +1268,133 @@ Rules:
         return {"success": False, "error": "Could not extract proof-backed bullets. Please try again."}
 
     return {"success": True, "evidence": evidence, "proof": parsed}
+
+
+# ============================================================
+# SHAREABLE, CLICKABLE PROOF-BACKED RESUME (the flagship differentiator)
+# A resume where every line is clickable and opens the exact proof behind it,
+# published as a single public link the user can send to recruiters / post.
+# ============================================================
+import json as _json
+from fastapi.responses import HTMLResponse as _HTMLResponse
+
+
+class ProofShareRequest(BaseModel):
+    name: str = ""
+    contact: str = ""
+    headline: str = ""
+    summary: str = ""
+    role: str = ""
+    bullets: list = []   # [{"text","evidence","tech":[],"confidence","project","link"}]
+
+
+def _proof_resume_page_html(d):
+    esc = html.escape
+    name = esc((d.get("name") or "My Proof-Backed Resume").strip() or "My Proof-Backed Resume")
+    contact = esc((d.get("contact") or "").strip())
+    headline = esc((d.get("headline") or d.get("role") or "").strip())
+    summary = esc((d.get("summary") or "").strip())
+    rows = []
+    for i, b in enumerate(d.get("bullets") or []):
+        text = esc(str(b.get("text") or ""))
+        ev = esc(str(b.get("evidence") or "Backed by the candidate's real project work."))
+        conf = str(b.get("confidence") or "inferred").lower()
+        conf_cls = "verified" if conf == "verified" else "inferred"
+        link = str(b.get("link") or "").strip()
+        chips = "".join(f"<span class='chip'>{esc(str(t))}</span>" for t in (b.get("tech") or [])[:8] if t)
+        proj = esc(str(b.get("project") or ""))
+        proj_html = f"<div class='proj'>{proj}</div>" if proj and proj.lower() != "general" else ""
+        link_html = (f"<a class='src' href='{esc(link)}' target='_blank' rel='noopener'>View the proof — project / live demo &rarr;</a>"
+                     if link.startswith("http") else "")
+        rows.append(
+            f"<li class='bullet'><div class='btop'><span class='dot'></span>"
+            f"<span class='btext'>{text}</span><span class='badge {conf_cls}'>{esc(conf)}</span></div>"
+            f"<div class='proof'>{proj_html}<div class='ev'>{ev}</div>"
+            f"<div class='chips'>{chips}</div>{link_html}</div></li>")
+    head_html = f"<p class='lead'>{headline}</p>" if headline else ""
+    contact_html = f"<p class='contact'>{contact}</p>" if contact else ""
+    summ_html = f"<p class='summary'>{summary}</p>" if summary else ""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{name} — Proof-Backed Resume</title>
+<style>
+:root{{--accent:#9a3b1c;--ink:#2a2118;--muted:#6b6250;--bg:#f7f1e6;--card:#fff;--border:#e3ded2;--green:#1d7a4d;--amber:#9a6a00;}}
+*{{box-sizing:border-box}}body{{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.55}}
+.wrap{{max-width:820px;margin:0 auto;padding:40px 20px 60px}}
+header{{border-bottom:3px solid var(--accent);padding-bottom:16px;margin-bottom:14px}}
+h1{{margin:0 0 4px;font-size:2rem;color:var(--accent)}}
+.lead{{font-size:1.05rem;margin:.3rem 0}}.contact{{color:var(--muted);font-size:.95rem;margin:.2rem 0}}
+.summary{{margin:.6rem 0 0}}
+.hint{{background:#fff;border:1px dashed var(--accent);border-radius:10px;padding:10px 14px;margin:16px 0;font-size:.92rem;color:var(--accent);font-weight:600}}
+ul.bullets{{list-style:none;margin:0;padding:0}}
+.bullet{{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden}}
+.btop{{display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer}}
+.btop:hover{{background:#fbf7f0}}
+.dot{{width:9px;height:9px;border-radius:50%;background:var(--accent);flex:0 0 auto}}
+.btext{{flex:1;font-weight:500}}
+.badge{{font-size:.68rem;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:20px;white-space:nowrap}}
+.badge.verified{{background:#e7f6ec;color:var(--green)}}.badge.inferred{{background:#fff2d8;color:var(--amber)}}
+.proof{{display:none;padding:2px 16px 16px 35px;border-top:1px solid var(--border);background:#fcfaf6}}
+.proof.open{{display:block}}
+.proj{{font-weight:700;margin:10px 0 4px}}.ev{{margin:6px 0}}
+.chips{{margin:6px 0}}.chip{{display:inline-block;background:#f0e8d8;color:#6b4a2b;border-radius:20px;padding:3px 10px;font-size:.78rem;margin:0 6px 6px 0}}
+.src{{color:var(--accent);font-weight:700;text-decoration:none}}.src:hover{{text-decoration:underline}}
+footer{{margin-top:28px;text-align:center;color:var(--muted);font-size:.82rem}}footer a{{color:var(--accent);font-weight:700;text-decoration:none}}
+</style></head><body><div class="wrap">
+<header><h1>{name}</h1>{head_html}{contact_html}</header>
+{summ_html}
+<div class="hint">&#128072; Click any line to see the proof behind it.</div>
+<ul class="bullets">{''.join(rows)}</ul>
+<footer>Every claim here is backed by real, verifiable work. Built with <a href="https://resumeforge-opal.vercel.app" target="_blank" rel="noopener">ResumeForge</a>.</footer>
+</div>
+<script>
+document.querySelectorAll(".btop").forEach(function(b){{b.addEventListener("click",function(){{
+  var p=b.parentNode.querySelector(".proof"); if(p) p.classList.toggle("open");
+}});}});
+</script>
+</body></html>"""
+
+
+@app.post("/proof-resume/share")
+def proof_resume_share(data: ProofShareRequest, authorization: Optional[str] = Header(None)):
+    if not (data.bullets or []):
+        return {"success": False, "error": "Build your proof-backed resume first."}
+    user = get_user_from_token(authorization)
+    uid = user["id"] if user else None
+    slug = secrets.token_urlsafe(7)
+    payload = {"name": data.name, "contact": data.contact, "headline": data.headline,
+               "summary": data.summary, "role": data.role, "bullets": data.bullets}
+    conn = get_db()
+    try:
+        db_exec(conn, "INSERT INTO shared_proofs (slug, user_id, title, data) VALUES (?, ?, ?, ?)",
+                (slug, uid, (data.name or "Proof-Backed Resume"), _json.dumps(payload)))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"success": True, "slug": slug, "path": "/p/" + slug}
+
+
+@app.get("/p/{slug}")
+def proof_public_page(slug: str):
+    conn = get_db()
+    row = None
+    try:
+        row = db_one(conn, "SELECT data FROM shared_proofs WHERE slug = ?", (slug,))
+        if row:
+            db_exec(conn, "UPDATE shared_proofs SET views = views + 1 WHERE slug = ?", (slug,))
+            conn.commit()
+    finally:
+        conn.close()
+    if not row:
+        return _HTMLResponse(
+            "<h1 style='font-family:sans-serif;text-align:center;margin-top:80px'>This proof page was not found.</h1>",
+            status_code=404)
+    try:
+        d = _json.loads(dict(row)["data"])
+    except Exception:
+        d = {}
+    return _HTMLResponse(_proof_resume_page_html(d))
 
 
 # ---- #2 Resume Defense Coach: questions + answer evaluation ----
@@ -3746,9 +3887,16 @@ def generate_resume(data: ResumeRequest):
 
         github_name = github_data.get("name") or ""
 
+        bg_name = extract_name_from_linkedin(data.background)
+        if not bg_name and (data.background or "").strip():
+            _first = next((ln.strip() for ln in data.background.splitlines() if ln.strip()), "")
+            if _first and len(_first) <= 40 and 1 <= len(_first.split()) <= 4 and not any(c.isdigit() for c in _first):
+                bg_name = _first
+
         candidate_name = (
         linkedin_name
         or github_name
+        or bg_name
         or username
         or "Candidate Name"
     )
@@ -3807,6 +3955,11 @@ Detected GitHub Skills:
 
 LinkedIn Profile Information:
 {data.linkedin_data}
+
+Candidate-Provided Background / CV (for non-developers, or extra context — may be pasted text or extracted from an uploaded CV or photo):
+{data.background}
+
+Note: If the GitHub analysis above is empty, build the resume primarily from the LinkedIn Profile Information and this Candidate-Provided Background.
 
 Instructions:
 

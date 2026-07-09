@@ -2197,6 +2197,8 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
 
         <div class="nav-buttons">
             <button class="nav-track-btn" id="navResumesBtn" title="My Resumes">📄 My Resumes</button>
+            <button class="nav-track-btn" data-go="proof" title="Proof &amp; Prep">🔬 Proof &amp; Prep</button>
+            <button class="nav-track-btn" data-go="interview" title="Interview Prep">🎤 Interview Prep</button>
             <button class="nav-track-btn" id="navVaultBtn" title="Career Evidence Vault">🗄️ Vault</button>
             <button class="nav-track-btn" id="navTrackerBtn" title="My Applications">📋 My Applications</button>
             <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark / light mode">🌙</button>
@@ -2221,20 +2223,27 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
         </h1>
 
         <p>
-            ResumeForge turns your real GitHub work into a resume where every line is backed by proof you can see —
-            then tells you which jobs to apply to, auto-fills the applications, and gets you ready to defend every line in the interview.
+            Turn your real GitHub work into a proof-backed resume — then find jobs, auto-fill applications, and rehearse the interview.
         </p>
 
         <div class="hero-buttons">
 
-            <button class="primary-btn">
-                Get Started Free
+            <button class="primary-btn" data-go="generate">
+                🚀 Generate My Resume
             </button>
 
             <button class="secondary-btn" id="watchDemoBtn">
                 ▶ Watch Demo
             </button>
 
+        </div>
+
+        <div class="hero-quick">
+            <span class="hero-quick-label">Or jump straight to:</span>
+            <button class="hero-chip" data-go="interview">🎤 Interview Prep</button>
+            <button class="hero-chip" data-go="proof">🔬 Proof &amp; Prep</button>
+            <button class="hero-chip" data-go="vault">🗄️ Vault</button>
+            <button class="hero-chip" data-go="tracker">📋 My Applications</button>
         </div>
 
     </section>
@@ -2249,32 +2258,32 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
 
         <div class="features-grid">
 
-            <div class="feature-card">
+            <div class="feature-card feature-card--action" data-go="generate" role="button" tabindex="0">
                 <h3>🔬 A resume that can't lie</h3>
                 <p>Every bullet links to the real GitHub repo, README, or live demo that proves it. Click “Why this bullet?” and see the receipts.</p>
             </div>
 
-            <div class="feature-card">
+            <div class="feature-card feature-card--action" data-go="proof" role="button" tabindex="0">
                 <h3>🎯 Know if you'll get in</h3>
                 <p>Paste any job for an honest Apply / Improve / Skip verdict. Stop wasting applications on jobs you can't win.</p>
             </div>
 
-            <div class="feature-card">
+            <div class="feature-card feature-card--action" data-go="proof" role="button" tabindex="0">
                 <h3>🚀 From “not qualified” to qualified</h3>
                 <p>Missing a skill? Get a 5-day project plan to prove it — then we update your evidence.</p>
             </div>
 
-            <div class="feature-card">
+            <div class="feature-card feature-card--action" data-go="interview" role="button" tabindex="0">
                 <h3>🎤 Defend every line</h3>
                 <p>Get the exact questions an interviewer would ask about your resume, and get scored on your answers.</p>
             </div>
 
-            <div class="feature-card">
+            <div class="feature-card feature-card--action" data-go="generate" role="button" tabindex="0">
                 <h3>⚡ Apply to 50 jobs before lunch</h3>
                 <p>Our Chrome extension fills each application and attaches the resume tailored to that role. You just hit submit.</p>
             </div>
 
-            <div class="feature-card">
+            <div class="feature-card feature-card--action" data-go="proof" role="button" tabindex="0">
                 <h3>🔗 Make recruiters stop scrolling</h3>
                 <p>A one-link proof page with your best projects, live demos, and why you fit — sent with every application.</p>
             </div>
@@ -2353,6 +2362,11 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
 
     <section id="generate" class="generator">
 
+        <div class="gen-topbar">
+            <button class="gen-back" id="genBack">← Back to home</button>
+            <span class="gen-topbar-brand">ResumeForge</span>
+        </div>
+
         <h2>Generate Your Resume</h2>
 
         <p>
@@ -2421,6 +2435,16 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
     </ul>
 
 </div>
+
+            <!-- Non-developer path: no GitHub/LinkedIn needed -->
+            <div class="nondev-box">
+                <label class="nondev-title">🙌 Not a developer? No GitHub or LinkedIn — no problem.</label>
+                <p class="nondev-help">Tell us what you do, or drop in your existing CV — we'll turn it into a polished resume.</p>
+                <textarea id="manualText" class="nondev-textarea" placeholder="Paste your CV, or describe your experience, skills, education, and what you do…"></textarea>
+                <label class="nondev-file-label">…or upload your CV — PDF or a photo/screenshot:
+                    <input type="file" id="cvFile" accept="application/pdf,.pdf,image/*" />
+                </label>
+            </div>
 
             <label>Target Company</label>
             <input id="company" type="text" placeholder="Amazon">
@@ -2560,6 +2584,11 @@ document.getElementById("location").value;
                 const role =
                     document.getElementById("role").value;
 
+                const manualText =
+                    document.getElementById("manualText") ? document.getElementById("manualText").value : "";
+                const cvEl = document.getElementById("cvFile");
+                const cvFile = (cvEl && cvEl.files) ? cvEl.files[0] : null;
+
 const formData = new FormData();
 
 if (linkedinPdf) {
@@ -2578,7 +2607,14 @@ for (let i = 0; i < linkedinImages.length; i++) {
         linkedinImages[i]
     );
 
-}const uploadResponse = await fetch(
+}
+
+if (cvFile) {
+    if (cvFile.type === "application/pdf") { formData.append("pdf", cvFile); }
+    else { formData.append("images", cvFile); }
+}
+
+const uploadResponse = await fetch(
     `${API_BASE}/upload-linkedin`,
     {
         method: "POST",
@@ -2626,7 +2662,9 @@ console.log(linkedinData);
 
                             location: location,
                             
-                            linkedin_data: linkedinData
+                            linkedin_data: linkedinData,
+
+                            background: manualText
 
                         })
                     }
@@ -2668,6 +2706,13 @@ document.getElementById("result").innerHTML = `
         <button id="openProofBtn" class="hub-open-btn hub-green">🔬 Proof &amp; Prep — make every claim defensible</button>
         <button id="openVaultBtn" class="hub-open-btn hub-brown">🗄️ Career Evidence Vault — proof-backed, job-ready resumes</button>
         <button id="openInterviewBtn" class="hub-open-btn hub-navy">🎤 Interview Prep — learn exactly what this job needs</button>
+    </div>
+
+    <div class="pbr-cta fade-in">
+        <div class="pbr-cta-tag">✨ The ResumeForge difference</div>
+        <h3>🏆 Build My Proof-Backed Resume</h3>
+        <p>A resume where <b>every line is clickable and jumps to the exact proof behind it</b> — your real projects, live demos, and evidence. Then share one link with recruiters; every claim is verifiable.</p>
+        <button id="openPbrBtn" class="pbr-btn">🏆 Build My Proof-Backed Resume →</button>
     </div>
 
     <div class="github-analysis fade-in">
@@ -5666,7 +5711,7 @@ function formatResumeHTML(text) {
   }
   document.addEventListener("click", function(e){
     var t=e.target;
-    if(t.closest && t.closest("#openInterviewBtn")){ e.preventDefault(); openP(); return; }
+    if(t.closest && (t.closest("#openInterviewBtn") || t.closest("[data-go='interview']"))){ e.preventDefault(); openP(); return; }
     if(t.id==="ivClose"){ closeP(); return; }
     if(t.id==="ivAnalyze"){ analyze(); return; }
     if(t.id==="ivLoadJobs"){ loadJobs(); return; }
@@ -5795,6 +5840,209 @@ function formatResumeHTML(text) {
   });
   document.addEventListener("keydown", function(e){ if((e.ctrlKey||e.metaKey) && e.key === "Enter" && e.target && e.target.id === "ivMockTyped"){ e.preventDefault(); submit(); } });
   try { support(); } catch(e){}
+})();
+</script>
+
+<!-- ===== Landing quick-access: features up top, one click away (added) ===== -->
+<style>
+.hero-quick{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; align-items:center; margin-top:20px; }
+.hero-quick-label{ font-size:.9rem; color:#8a7a68; margin-right:2px; }
+.hero-chip{ background:#fff; border:1px solid var(--border,#e6ddce); color:var(--ink,#2b2b2b); border-radius:999px; padding:9px 16px; font-size:.92rem; font-weight:600; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease; }
+.hero-chip:hover{ transform:translateY(-2px); box-shadow:0 6px 16px rgba(0,0,0,.12); }
+.feature-card--action{ cursor:pointer; transition:transform .12s ease, box-shadow .12s ease; }
+.feature-card--action:hover{ transform:translateY(-4px); box-shadow:0 12px 26px rgba(0,0,0,.12); }
+.feature-card--action::after{ content:"Open →"; display:inline-block; margin-top:12px; color:var(--accent,#9a3b1c); font-weight:700; font-size:.9rem; }
+.feature-card--action:focus-visible{ outline:2px solid var(--accent,#9a3b1c); outline-offset:3px; }
+body.dark-mode .hero-chip{ background:#17150f; color:#e8e2d8; border-color:#2a2823; }
+/* Dedicated Generate page: form hidden on landing, marketing hidden on the form page */
+body:not(.view-generate) #generate{ display:none !important; }
+body.view-generate #home, body.view-generate #features, body.view-generate #samples{ display:none !important; }
+.gen-topbar{ display:flex; align-items:center; justify-content:space-between; max-width:900px; margin:0 auto; padding:14px 20px 4px; }
+.gen-back{ background:#fff; border:1px solid var(--border,#e6ddce); border-radius:8px; padding:9px 15px; cursor:pointer; font-weight:700; color:var(--accent,#9a3b1c); font-size:.95rem; }
+.gen-back:hover{ background:#faf3ee; }
+.gen-topbar-brand{ font-weight:800; color:var(--accent,#9a3b1c); }
+body.dark-mode .gen-back{ background:#17150f; color:#e8e2d8; border-color:#2a2823; }
+/* Non-developer path */
+.nondev-box{ margin:18px 0 6px; padding:16px 18px; background:#f4efe7; border:1px dashed var(--accent,#9a3b1c); border-radius:12px; }
+.nondev-title{ display:block; font-weight:800; color:var(--accent,#9a3b1c); margin-bottom:4px; }
+.nondev-help{ margin:0 0 10px; font-size:.9rem; color:#6b5b4a; }
+.nondev-textarea{ width:100%; box-sizing:border-box; min-height:110px; resize:vertical; border:1px solid var(--border,#e6ddce); border-radius:9px; padding:11px 12px; font-family:inherit; font-size:.95rem; background:#fff; color:#1c1712; }
+.nondev-file-label{ display:block; margin-top:10px; font-size:.9rem; font-weight:600; color:#5b4a38; }
+.nondev-file-label input{ display:block; margin-top:6px; }
+body.dark-mode .nondev-box{ background:#17150f; border-color:#6b4a2b; }
+body.dark-mode .nondev-textarea{ background:#0e0d0b; color:#e8e2d8; border-color:#2a2823; }
+</style>
+<script>
+// Landing quick-access router + dedicated Generate "page" (view swap).
+(function () {
+  function showGenerate(){ document.body.classList.add("view-generate"); try{ history.pushState(null,"","#generate"); }catch(e){} window.scrollTo(0,0); }
+  function showHome(){ document.body.classList.remove("view-generate"); try{ history.pushState(null,"","#home"); }catch(e){} window.scrollTo(0,0); }
+  function syncFromHash(){ document.body.classList.toggle("view-generate", location.hash === "#generate"); }
+  window.addEventListener("popstate", syncFromHash);
+  window.addEventListener("hashchange", syncFromHash);
+  if (location.hash === "#generate") { document.body.classList.add("view-generate"); }
+  function go(target) {
+    if (target === "generate") { showGenerate(); return; }
+    if (target === "proof") { if (window.openProofPanel) window.openProofPanel("proof"); return; }
+    if (target === "vault") { if (window.openVault) window.openVault("vault"); return; }
+    if (target === "tracker") { var b = document.getElementById("navTrackerBtn"); if (b) b.click(); return; }
+    // "interview" is handled by the Interview Prep panel's own listener
+  }
+  document.addEventListener("click", function (e) {
+    if (e.target.closest && e.target.closest("#genBack")) { e.preventDefault(); showHome(); return; }
+    var el = e.target.closest ? e.target.closest("[data-go]") : null;
+    if (!el) return;
+    var target = el.getAttribute("data-go");
+    if (target === "interview") return;
+    go(target);
+  });
+  // keyboard access for the clickable feature cards
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    var el = e.target && e.target.getAttribute && e.target.getAttribute("data-go");
+    if (el && e.target.classList.contains("feature-card--action")) { e.preventDefault(); e.target.click(); }
+  });
+})();
+</script>
+
+<!-- ===== Proof-Backed Resume — clickable proof + shareable recruiter link (flagship) ===== -->
+<style>
+.pbr-cta{ background:linear-gradient(135deg,#fff,#f6efe6); border:2px solid var(--accent,#9a3b1c); border-radius:16px; padding:20px 22px; margin:0 0 18px; box-shadow:0 10px 30px rgba(154,59,28,.14); }
+.pbr-cta-tag{ display:inline-block; background:var(--accent,#9a3b1c); color:#fff; font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:3px 10px; border-radius:999px; margin-bottom:8px; }
+.pbr-cta h3{ margin:0 0 6px; color:var(--accent,#9a3b1c); font-size:1.2rem; }
+.pbr-cta p{ margin:0 0 14px; color:#5b4a38; font-size:.95rem; }
+.pbr-btn{ background:var(--accent,#9a3b1c); color:#fff; border:0; border-radius:10px; padding:13px 22px; font-size:1.02rem; font-weight:800; cursor:pointer; }
+.pbr-btn:hover{ filter:brightness(1.06); }
+.pbr-btn.ghost{ background:#fff; color:var(--accent,#9a3b1c); border:1px solid var(--accent,#9a3b1c); }
+.pbr-btn.sm{ padding:8px 14px; font-size:.9rem; text-decoration:none; display:inline-block; }
+.pbr-overlay{ position:fixed; inset:0; z-index:640; background:var(--cream,#f7f5ef); overflow-y:auto; display:none; }
+.pbr-overlay.open{ display:block; }
+.pbr-head{ position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 22px; background:var(--accent,#9a3b1c); color:#fff; }
+.pbr-head h2{ margin:0; font-size:1.3rem; } .pbr-head p{ margin:2px 0 0; font-size:.9rem; opacity:.9; }
+.pbr-x{ background:transparent; border:0; color:#fff; font-size:2rem; line-height:1; cursor:pointer; padding:0 4px; }
+.pbr-wrap{ max-width:820px; margin:0 auto; padding:22px 18px 60px; }
+.pbr-intro{ background:#fff; border:1px solid var(--border,#e6ddce); border-radius:14px; padding:24px; text-align:center; }
+.pbr-intro p{ color:#5b4a38; margin:0 0 14px; }
+.pbr-msg{ font-size:.9rem; color:#6b5b4a; margin-top:10px; min-height:18px; }
+.pbr-hint{ background:#fff; border:1px dashed var(--accent,#9a3b1c); color:var(--accent,#9a3b1c); font-weight:700; border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:.92rem; text-align:center; }
+.pbr-summary{ background:#fff; border:1px solid var(--border,#e6ddce); border-radius:12px; padding:16px 18px; margin-bottom:14px; color:#2b2b2b; }
+.pbr-summary:empty{ display:none; }
+.pbr-bullets{ list-style:none; margin:0; padding:0; }
+.pbr-bullet{ background:#fff; border:1px solid var(--border,#e6ddce); border-radius:12px; margin-bottom:10px; overflow:hidden; }
+.pbr-btop{ display:flex; align-items:center; gap:10px; padding:14px 16px; cursor:pointer; }
+.pbr-btop:hover{ background:#fbf7f0; }
+.pbr-dot{ width:9px; height:9px; border-radius:50%; background:var(--accent,#9a3b1c); flex:0 0 auto; }
+.pbr-btext{ flex:1; font-weight:500; color:#2b2b2b; }
+.pbr-badge{ font-size:.68rem; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:20px; white-space:nowrap; }
+.pbr-badge.verified{ background:#e7f6ec; color:#1d7a4d; } .pbr-badge.inferred{ background:#fff2d8; color:#9a6a00; }
+.pbr-proof{ display:none; padding:2px 16px 16px 35px; border-top:1px solid var(--border,#e6ddce); background:#fcfaf6; }
+.pbr-proof.open{ display:block; }
+.pbr-proj{ font-weight:700; margin:10px 0 4px; color:#26415e; }
+.pbr-ev{ margin:6px 0; color:#3a3a3a; }
+.pbr-chips{ margin:6px 0; } .pbr-chip{ display:inline-block; background:#f0e8d8; color:#6b4a2b; border-radius:20px; padding:3px 10px; font-size:.78rem; margin:0 6px 6px 0; }
+.pbr-src{ color:var(--accent,#9a3b1c); font-weight:700; text-decoration:none; } .pbr-src:hover{ text-decoration:underline; }
+.pbr-share{ background:#fff; border:1px solid var(--border,#e6ddce); border-radius:14px; padding:18px 20px; margin-top:18px; }
+.pbr-share h3{ margin:0 0 4px; color:var(--accent,#9a3b1c); }
+.pbr-share p{ margin:0 0 12px; color:#5b4a38; font-size:.92rem; }
+.pbr-linkrow{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.pbr-linkfield{ flex:1; min-width:180px; padding:10px 12px; border:1px solid var(--border,#e6ddce); border-radius:8px; font-size:.9rem; background:#faf8f4; color:#2b2b2b; }
+.pbr-linknote{ margin-top:8px; font-size:.85rem; color:#6b5b4a; }
+.pbr-load{ color:#6b5b4a; font-size:.9rem; }
+body.dark-mode .pbr-overlay{ background:#0e0d0b; }
+body.dark-mode .pbr-intro, body.dark-mode .pbr-summary, body.dark-mode .pbr-bullet, body.dark-mode .pbr-share{ background:#17150f; color:#e8e2d8; border-color:#2a2823; }
+</style>
+
+<div id="pbrPanel" class="pbr-overlay" aria-hidden="true">
+  <div class="pbr-head">
+    <div><h2>🏆 Proof-Backed Resume</h2><p>Every line links to the proof behind it — then share it with recruiters.</p></div>
+    <button class="pbr-x" id="pbrClose" aria-label="Close">&times;</button>
+  </div>
+  <div class="pbr-wrap">
+    <div class="pbr-intro" id="pbrIntro">
+      <p>We read your real GitHub work and build a resume where <b>every claim is backed by proof you can click</b> — the one thing other resume tools can't do. Then you get a single link to send recruiters.</p>
+      <button class="pbr-btn" id="pbrBuild">🏆 Build it now</button>
+      <div id="pbrMsg" class="pbr-msg"></div>
+    </div>
+    <div id="pbrOut" style="display:none;">
+      <div class="pbr-hint">👆 Click any line to reveal the proof behind it.</div>
+      <div id="pbrSummary" class="pbr-summary"></div>
+      <ul class="pbr-bullets" id="pbrBullets"></ul>
+      <div class="pbr-share">
+        <h3>📣 Share with a recruiter</h3>
+        <p>Create one public link. Every send is a chance for a recruiter to click your proof and ask who made this.</p>
+        <button class="pbr-btn ghost" id="pbrShare">🔗 Create shareable link</button>
+        <div id="pbrShareOut" style="margin-top:12px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Proof-Backed Resume: clickable per-line proof + shareable public recruiter link.
+(function () {
+  var PBR_API = (location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.protocol === "file:")
+    ? "http://localhost:8000" : "https://resumeforge-backend-1bu3.onrender.com";
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  var LAST = null;
+  function ghUser() { var el = $("github"); return el ? (el.value || "").trim() : ""; }
+  function metaRole() { return (window.__resumeMeta && window.__resumeMeta.role) || ""; }
+  function contactStr() { var m = window.__resumeMeta || {}; return [m.email, m.phone, m.location].filter(Boolean).join(" | "); }
+  function nameFromResume() { var m = window.__resumeMeta || {}; var first = ((window.__resumeText || "").split("\n")[0] || "").trim(); return (m.name || first || "").slice(0, 80); }
+  function openP() { var o = $("pbrPanel"); if (!o) return; o.classList.add("open"); o.setAttribute("aria-hidden", "false"); document.body.style.overflow = "hidden"; if (!LAST) build(); }
+  function closeP() { var o = $("pbrPanel"); if (!o) return; o.classList.remove("open"); o.setAttribute("aria-hidden", "true"); document.body.style.overflow = ""; }
+  function api(path, body) { return fetch(PBR_API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(function (r) { return r.json(); }); }
+  function build() {
+    if (!ghUser() && !(window.__resumeText || "")) { $("pbrMsg").innerHTML = "Generate a resume (or enter your GitHub) first, then come back."; return; }
+    $("pbrIntro").style.display = "block"; $("pbrOut").style.display = "none";
+    $("pbrMsg").innerHTML = "⏳ Reading your real work and building proof-backed bullets…";
+    api("/proof-resume", { github: ghUser(), resume: (window.__resumeText || ""), role: metaRole() }).then(function (d) {
+      if (!d.success) { $("pbrMsg").innerHTML = "⚠️ " + esc(d.error || "Could not build. Try again."); return; }
+      var ev = d.evidence || [], proof = d.proof || {};
+      var bullets = (proof.bullets || []).map(function (b) {
+        var proj = ev.filter(function (p) { return p.name === b.project; })[0];
+        var link = proj ? (proj.deployed || proj.url) : "";
+        return { text: b.text, evidence: b.evidence, tech: b.tech || [], confidence: b.confidence || "inferred", project: b.project || "", link: link };
+      });
+      LAST = { name: nameFromResume(), contact: contactStr(), headline: metaRole(), summary: proof.summary || "", role: metaRole(), bullets: bullets };
+      renderBullets();
+      $("pbrMsg").innerHTML = ""; $("pbrIntro").style.display = "none"; $("pbrOut").style.display = "block";
+      $("pbrShareOut").innerHTML = "";
+    }).catch(function () { $("pbrMsg").innerHTML = "⚠️ Couldn't reach the server. Is the backend awake?"; });
+  }
+  function renderBullets() {
+    $("pbrSummary").innerHTML = LAST.summary ? esc(LAST.summary) : "";
+    $("pbrBullets").innerHTML = LAST.bullets.map(function (b, i) {
+      var cls = (b.confidence || "inferred").toLowerCase() === "verified" ? "verified" : "inferred";
+      var chips = (b.tech || []).slice(0, 8).map(function (t) { return "<span class='pbr-chip'>" + esc(t) + "</span>"; }).join("");
+      var link = (b.link && /^https?:/.test(b.link)) ? "<a class='pbr-src' href='" + esc(b.link) + "' target='_blank' rel='noopener'>View the proof — project / live demo →</a>" : "";
+      var proj = (b.project && b.project.toLowerCase() !== "general") ? "<div class='pbr-proj'>" + esc(b.project) + "</div>" : "";
+      return "<li class='pbr-bullet'><div class='pbr-btop' data-i='" + i + "'><span class='pbr-dot'></span><span class='pbr-btext'>" + esc(b.text) + "</span><span class='pbr-badge " + cls + "'>" + esc(b.confidence || "inferred") + "</span></div>"
+        + "<div class='pbr-proof' id='pbrp" + i + "'>" + proj + "<div class='pbr-ev'>" + esc(b.evidence || "Backed by your real project work.") + "</div><div class='pbr-chips'>" + chips + "</div>" + link + "</div></li>";
+    }).join("");
+  }
+  function share() {
+    if (!LAST) return;
+    var out = $("pbrShareOut"); out.innerHTML = "<span class='pbr-load'>Creating your public link…</span>";
+    api("/proof-resume/share", LAST).then(function (d) {
+      if (!d.success || !d.path) { out.innerHTML = "<span class='pbr-load'>⚠️ " + esc(d.error || "Could not create link.") + "</span>"; return; }
+      var url = PBR_API + d.path;
+      out.innerHTML = "<div class='pbr-linkrow'><input class='pbr-linkfield' id='pbrLink' readonly value='" + esc(url) + "'>"
+        + "<button class='pbr-btn sm' id='pbrCopy'>Copy</button>"
+        + "<a class='pbr-btn sm ghost' href='" + esc(url) + "' target='_blank' rel='noopener'>Open ↗</a></div>"
+        + "<div class='pbr-linknote'>Send this to recruiters or post it on LinkedIn — they can click any line to see your proof.</div>";
+    }).catch(function () { out.innerHTML = "<span class='pbr-load'>⚠️ Could not reach the server.</span>"; });
+  }
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (t.closest && t.closest("#openPbrBtn")) { e.preventDefault(); openP(); return; }
+    if (t.id === "pbrClose") { closeP(); return; }
+    if (t.id === "pbrBuild") { build(); return; }
+    if (t.id === "pbrShare") { share(); return; }
+    if (t.id === "pbrCopy") { var f = $("pbrLink"); if (f) { f.select(); try { document.execCommand("copy"); } catch (e2) {} if (navigator.clipboard) navigator.clipboard.writeText(f.value); t.textContent = "✓ Copied"; setTimeout(function () { t.textContent = "Copy"; }, 1500); } return; }
+    var bt = t.closest && t.closest(".pbr-btop"); if (bt) { var p = $("pbrp" + bt.getAttribute("data-i")); if (p) p.classList.toggle("open"); return; }
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { var o = $("pbrPanel"); if (o && o.classList.contains("open")) closeP(); } });
 })();
 </script>
 </body>

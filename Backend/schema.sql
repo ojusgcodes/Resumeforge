@@ -149,6 +149,16 @@ create table if not exists job_evidence_matches (
     created_at        timestamptz not null default now()
 );
 
+-- Shareable, clickable proof-backed resume pages (public via GET /p/{slug})
+create table if not exists shared_proofs (
+    slug       text primary key,
+    user_id    bigint,
+    title      text,
+    data       text not null,
+    views      integer not null default 0,
+    created_at timestamptz not null default now()
+);
+
 -- Helpful indexes
 create index if not exists idx_resumes_user  on resumes(user_id);
 create index if not exists idx_events_name  on events(event);
