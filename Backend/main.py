@@ -49,6 +49,63 @@ model = genai.GenerativeModel("gemini-2.5-flash")
 
 
 # ---------------------------------------------------------------------------
+# Performance helpers: a shared keep-alive HTTP session (connection pooling),
+# a small thread-pool "fan-out" so I/O-bound work (GitHub, arXiv, job
+# providers) runs concurrently instead of one call at a time, and a tiny TTL
+# cache so repeated lookups within a few minutes don't refetch. This work is
+# network-bound, so threads are the right tool (the GIL is released on I/O).
+# ---------------------------------------------------------------------------
+from concurrent.futures import ThreadPoolExecutor
+import threading as _threading
+
+_HTTP = requests.Session()
+_HTTP.headers.update({"User-Agent": "ResumeForge/1.0"})
+_adapter = requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=20, max_retries=0)
+_HTTP.mount("https://", _adapter)
+_HTTP.mount("http://", _adapter)
+
+
+def _parallel(func, items, max_workers=8, timeout=25):
+    """Run func over items concurrently, returning results in input order.
+    A failed or slow item yields None, so one bad call never breaks the batch."""
+    items = list(items or [])
+    if not items:
+        return []
+    out = [None] * len(items)
+    workers = max(1, min(max_workers, len(items)))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(func, it): i for i, it in enumerate(items)}
+        for fut, i in futs.items():
+            try:
+                out[i] = fut.result(timeout=timeout)
+            except Exception as e:
+                print("parallel task error:", str(e))
+    return out
+
+
+_CACHE = {}
+_CACHE_LOCK = _threading.Lock()
+
+
+def _cache_get(key):
+    with _CACHE_LOCK:
+        v = _CACHE.get(key)
+    if not v:
+        return None
+    exp, data = v
+    if exp < time.time():
+        with _CACHE_LOCK:
+            _CACHE.pop(key, None)
+        return None
+    return data
+
+
+def _cache_set(key, data, ttl=180):
+    with _CACHE_LOCK:
+        _CACHE[key] = (time.time() + ttl, data)
+
+
+# ---------------------------------------------------------------------------
 # Observability: structured logging + optional Sentry error monitoring.
 # Set SENTRY_DSN in the environment to turn on error tracking (no-op if unset,
 # so it never breaks local/dev runs).
@@ -1155,13 +1212,17 @@ def autofill_plan(data: AutofillRequest, authorization: Optional[str] = Header(N
 
 def _fetch_github_evidence(username, max_projects=4):
     """Fetch a candidate's top GitHub projects with proof signals: deployed
-    link, languages, topics, stars, and a README excerpt. Best-effort."""
-    out = []
+    link, languages, topics, stars, and a README excerpt. Best-effort.
+    Repo READMEs are fetched in PARALLEL, and results are cached briefly."""
     username = (username or "").strip()
     if not username:
-        return out
+        return []
+    ck = "ghev:" + username + ":" + str(max_projects)
+    cached = _cache_get(ck)
+    if cached is not None:
+        return cached
     try:
-        r = requests.get(
+        r = _HTTP.get(
             f"https://api.github.com/users/{username}/repos?per_page=100&sort=pushed",
             timeout=10)
         repos = r.json() if r.status_code == 200 else []
@@ -1174,12 +1235,13 @@ def _fetch_github_evidence(username, max_projects=4):
     repos = [x for x in repos if isinstance(x, dict) and not x.get("fork")]
     repos.sort(key=lambda x: (x.get("stargazers_count", 0) or 0, x.get("pushed_at", "") or ""),
                reverse=True)
-    for repo in repos[:max_projects]:
+
+    def _one(repo):
         name = repo.get("name") or ""
         readme = ""
         for branch in ("main", "master"):
             try:
-                rr = requests.get(
+                rr = _HTTP.get(
                     f"https://raw.githubusercontent.com/{username}/{name}/{branch}/README.md",
                     timeout=8)
                 if rr.status_code == 200 and rr.text.strip():
@@ -1187,7 +1249,7 @@ def _fetch_github_evidence(username, max_projects=4):
                     break
             except Exception:
                 pass
-        out.append({
+        return {
             "name": name,
             "url": repo.get("html_url") or "",
             "deployed": (repo.get("homepage") or "").strip(),
@@ -1196,7 +1258,10 @@ def _fetch_github_evidence(username, max_projects=4):
             "topics": repo.get("topics") or [],
             "stars": repo.get("stargazers_count", 0) or 0,
             "readme_excerpt": readme,
-        })
+        }
+
+    out = [x for x in _parallel(_one, repos[:max_projects], max_workers=6) if x]
+    _cache_set(ck, out, ttl=300)
     return out
 
 
@@ -1525,11 +1590,15 @@ def _fetch_arxiv(query, max_results=5):
     q = (query or "").strip()
     if not q:
         return out
+    ck = "arxiv:" + q + ":" + str(max_results)
+    cached = _cache_get(ck)
+    if cached is not None:
+        return cached
     try:
         url = ("https://export.arxiv.org/api/query?search_query="
                + _urlparse.quote_plus("all:" + q)
                + "&start=0&max_results=" + str(max_results) + "&sortBy=relevance")
-        r = requests.get(url, timeout=10, headers={"User-Agent": "ResumeForge/1.0 (interview-prep)"})
+        r = _HTTP.get(url, timeout=10)
         if r.status_code != 200:
             return out
         ns = {"a": "http://www.w3.org/2005/Atom"}
@@ -1557,6 +1626,7 @@ def _fetch_arxiv(query, max_results=5):
             })
     except Exception as e:
         print("arxiv fetch error:", str(e))
+    _cache_set(ck, out, ttl=600)
     return out
 
 
@@ -1610,8 +1680,8 @@ Give 6-10 topics, ordered most-important first. Be specific to the JD, not gener
     if not kws:
         kws = [t["name"] for t in topics_out[:3]]
     papers, seen = [], set()
-    for kw in kws[:3]:
-        for p in _fetch_arxiv(kw, max_results=4):
+    for batch in _parallel(lambda kw: _fetch_arxiv(kw, max_results=4), kws[:3], max_workers=3):
+        for p in (batch or []):
             if not p.get("url") or p["url"] in seen:
                 continue
             seen.add(p["url"])
@@ -3335,39 +3405,52 @@ def _ats_companies(env_name, default):
 # ---- Provider 2: ATS boards (Greenhouse + Lever), free, no key ----
 def _provider_ats(role, location, country):
     role_l = (role or "").lower()
-    out = []
-    for comp in _ats_companies("ATS_GREENHOUSE_COMPANIES", DEFAULT_GREENHOUSE):
+
+    def _greenhouse(comp):
+        res = []
         try:
-            r = requests.get(f"https://boards-api.greenhouse.io/v1/boards/{comp}/jobs", timeout=8)
+            r = _HTTP.get(f"https://boards-api.greenhouse.io/v1/boards/{comp}/jobs", timeout=8)
             if r.status_code != 200:
-                continue
+                return res
             for j in (r.json().get("jobs") or []):
                 title = j.get("title", "")
                 if role_l and role_l not in title.lower():
                     continue
-                out.append({
+                res.append({
                     "title": title, "company": comp.title(),
                     "location": (j.get("location") or {}).get("name", ""),
                     "url": j.get("absolute_url", ""), "snippet": "", "source": "Greenhouse",
                 })
         except Exception:
-            continue
-    for comp in _ats_companies("ATS_LEVER_COMPANIES", DEFAULT_LEVER):
+            pass
+        return res
+
+    def _lever(comp):
+        res = []
         try:
-            r = requests.get(f"https://api.lever.co/v0/postings/{comp}?mode=json", timeout=8)
+            r = _HTTP.get(f"https://api.lever.co/v0/postings/{comp}?mode=json", timeout=8)
             if r.status_code != 200:
-                continue
+                return res
             for j in (r.json() or []):
                 title = j.get("text", "")
                 if role_l and role_l not in title.lower():
                     continue
-                out.append({
+                res.append({
                     "title": title, "company": comp.title(),
                     "location": (j.get("categories") or {}).get("location", ""),
                     "url": j.get("hostedUrl", ""), "snippet": "", "source": "Lever",
                 })
         except Exception:
-            continue
+            pass
+        return res
+
+    # Fetch every company board (Greenhouse + Lever) concurrently, then flatten.
+    tasks = [(_greenhouse, c) for c in _ats_companies("ATS_GREENHOUSE_COMPANIES", DEFAULT_GREENHOUSE)]
+    tasks += [(_lever, c) for c in _ats_companies("ATS_LEVER_COMPANIES", DEFAULT_LEVER)]
+    out = []
+    for res in _parallel(lambda t: t[0](t[1]), tasks, max_workers=10, timeout=12):
+        if res:
+            out.extend(res)
     return out
 
 
@@ -3423,12 +3506,21 @@ def search_jobs(data: JobSearchRequest):
 
     all_jobs = []
     sources_active = []
-    for name, fn in JOB_PROVIDERS:
+
+    def _run_provider(pv):
+        pname, fn = pv
         try:
-            res = fn(role, location, country)
+            return (pname, fn(role, location, country))
         except Exception as e:
-            print(f"Provider {name} error:", str(e))
-            res = None
+            print(f"Provider {pname} error:", str(e))
+            return (pname, None)
+
+    # Query every job provider CONCURRENTLY — total time ~= the slowest one,
+    # instead of the sum of all of them.
+    for item in _parallel(_run_provider, JOB_PROVIDERS, max_workers=max(len(JOB_PROVIDERS), 1), timeout=20):
+        if not item:
+            continue
+        name, res = item
         if res is None:
             continue
         sources_active.append(name)

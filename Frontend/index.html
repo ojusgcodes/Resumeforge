@@ -2011,6 +2011,12 @@ body.dark-mode .track-notes { background: #17150f; }
 body.dark-mode .jobs-modal-search input { background: #17150f; }
 .jobs-modal-search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(154,59,28,.12); }
 .jobs-modal-body { padding: 18px 22px; overflow-y: auto; }
+/* Sticky "Save selected jobs" bar — always visible while scrolling the list */
+.jobs-save-bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin: 14px -22px -18px; padding: 12px 22px; background: rgba(255,253,249,.97); border-top: 1px solid var(--border); box-shadow: 0 -6px 18px rgba(0,0,0,.08); z-index: 5; }
+.jobs-save-bar .jobs-save-note { margin-right: auto; font-size: .85rem; color: var(--muted,#6b6250); max-width: 58%; }
+.jobs-save-bar .jobs-save-note p { margin: 0; }
+.jobs-save-fab { flex: 0 0 auto; box-shadow: 0 6px 16px rgba(154,59,28,.3); }
+body.dark-mode .jobs-save-bar { background: rgba(23,21,15,.97); border-top-color: #2a2823; }
 @media (max-width: 560px) { .jobs-modal { max-height: calc(100vh - 40px); } .jobs-overlay { padding: 20px 10px; } }
 
 /* ===== TAILOR & APPLY — per-job applications (Steps 3-5) ===== */
@@ -2196,11 +2202,17 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
         </ul>
 
         <div class="nav-buttons">
-            <button class="nav-track-btn" id="navResumesBtn" title="My Resumes">📄 My Resumes</button>
-            <button class="nav-track-btn" data-go="proof" title="Proof &amp; Prep">🔬 Proof &amp; Prep</button>
-            <button class="nav-track-btn" data-go="interview" title="Interview Prep">🎤 Interview Prep</button>
-            <button class="nav-track-btn" id="navVaultBtn" title="Career Evidence Vault">🗄️ Vault</button>
-            <button class="nav-track-btn" id="navTrackerBtn" title="My Applications">📋 My Applications</button>
+            <div class="nav-menu-wrap">
+                <button class="nav-track-btn nav-menu-trigger" id="navMenuBtn" aria-haspopup="true" aria-expanded="false" title="Menu">☰ Menu</button>
+                <div class="nav-menu-dropdown" id="navMenuDropdown">
+                    <button class="nav-track-btn" id="navResumesBtn" title="My Resumes">📄 My Resumes</button>
+                    <button class="nav-track-btn" data-go="proof" title="Proof &amp; Prep">🔬 Proof &amp; Prep</button>
+                    <button class="nav-track-btn" data-go="interview" title="Interview Prep">🎤 Interview Prep</button>
+                    <button class="nav-track-btn" id="navVaultBtn" title="Career Evidence Vault">🗄️ Vault</button>
+                    <button class="nav-track-btn" id="navSavedJobsBtn" title="Saved Jobs">📌 Saved Jobs</button>
+                    <button class="nav-track-btn" id="navTrackerBtn" title="My Applications">📋 My Applications</button>
+                </div>
+            </div>
             <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark / light mode">🌙</button>
             <button class="login-btn" id="loginBtn">Login</button>
             <button class="signup-btn" id="signupBtn">Sign Up</button>
@@ -2250,42 +2262,27 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
 
     <section id="features" class="features">
 
-        <h2>Proof, not promises.</h2>
+        <h2>Everything ResumeForge can do</h2>
 
         <p class="features-subtitle">
-            Most tools write claims and wish you luck. ResumeForge backs every line with evidence — then helps you apply and interview.
+            From your profile to a proof-backed resume that gets interviews — in three simple steps.
         </p>
 
         <div class="features-grid">
 
             <div class="feature-card feature-card--action" data-go="generate" role="button" tabindex="0">
-                <h3>🔬 A resume that can't lie</h3>
-                <p>Every bullet links to the real GitHub repo, README, or live demo that proves it. Click “Why this bullet?” and see the receipts.</p>
-            </div>
-
-            <div class="feature-card feature-card--action" data-go="proof" role="button" tabindex="0">
-                <h3>🎯 Know if you'll get in</h3>
-                <p>Paste any job for an honest Apply / Improve / Skip verdict. Stop wasting applications on jobs you can't win.</p>
-            </div>
-
-            <div class="feature-card feature-card--action" data-go="proof" role="button" tabindex="0">
-                <h3>🚀 From “not qualified” to qualified</h3>
-                <p>Missing a skill? Get a 5-day project plan to prove it — then we update your evidence.</p>
-            </div>
-
-            <div class="feature-card feature-card--action" data-go="interview" role="button" tabindex="0">
-                <h3>🎤 Defend every line</h3>
-                <p>Get the exact questions an interviewer would ask about your resume, and get scored on your answers.</p>
+                <h3><span class="step-num">1</span> Build your resume with AI</h3>
+                <p>Turn your GitHub, LinkedIn, or CV into a polished resume in seconds — then edit and customize every line and download it in beautiful professional templates.</p>
             </div>
 
             <div class="feature-card feature-card--action" data-go="generate" role="button" tabindex="0">
-                <h3>⚡ Apply to 50 jobs before lunch</h3>
-                <p>Our Chrome extension fills each application and attaches the resume tailored to that role. You just hit submit.</p>
+                <h3><span class="step-num">2</span> Find jobs &amp; apply smarter</h3>
+                <p>Discover roles you actually qualify for right here, tailor your resume to each job, and auto-fill applications with the Chrome extension — you just review and hit submit.</p>
             </div>
 
             <div class="feature-card feature-card--action" data-go="proof" role="button" tabindex="0">
-                <h3>🔗 Make recruiters stop scrolling</h3>
-                <p>A one-link proof page with your best projects, live demos, and why you fit — sent with every application.</p>
+                <h3><span class="step-num">3</span> Prove every claim &amp; stand out</h3>
+                <p>Build a proof-backed resume where every line links to real evidence — all tracked in your Career Evidence Vault. The differentiator that makes recruiters trust you, and it's shareable.</p>
             </div>
 
         </div>
@@ -3257,7 +3254,7 @@ function renderJobs(d) {
               + (j.url ? `<a class="job-view" href="${_esc(j.url)}" target="_blank" rel="noopener">View posting ↗</a>` : "")
               + `</div></label>`;
         });
-        h += `</div><button id="saveSelectedJobsBtn" class="pdf-btn" style="margin-top:12px;">✅ Save selected jobs</button><div id="selectedJobsNote"></div>`;
+        h += `</div><div class="jobs-save-bar"><div id="selectedJobsNote" class="jobs-save-note"></div><button id="saveSelectedJobsBtn" class="pdf-btn jobs-save-fab">✅ Save selected jobs</button></div>`;
     } else {
         const noKeys = !Array.isArray(d.sources_active) || d.sources_active.filter(s => s !== "Company ATS").length === 0;
         if (noKeys) {
@@ -3393,6 +3390,7 @@ document.addEventListener("click", function (e) {
     });
     window.__selectedJobs = sel;
     try { localStorage.setItem("rf_selected_jobs", JSON.stringify(sel)); } catch (err) {}
+    try { if (window.__addSavedJobs) window.__addSavedJobs(sel); } catch (e2) {}
     const note = document.getElementById("selectedJobsNote");
     if (note) {
         note.innerHTML = sel.length
@@ -5853,6 +5851,16 @@ function formatResumeHTML(text) {
 .feature-card--action:hover{ transform:translateY(-4px); box-shadow:0 12px 26px rgba(0,0,0,.12); }
 .feature-card--action::after{ content:"Open →"; display:inline-block; margin-top:12px; color:var(--accent,#9a3b1c); font-weight:700; font-size:.9rem; }
 .feature-card--action:focus-visible{ outline:2px solid var(--accent,#9a3b1c); outline-offset:3px; }
+.step-num{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; background:var(--accent,#9a3b1c); color:#fff; font-size:.9rem; font-weight:800; margin-right:8px; vertical-align:middle; }
+/* Navbar overflow "Menu" dropdown (de-crowds the nav; nothing removed) */
+.nav-menu-wrap{ position:relative; display:inline-block; }
+.nav-menu-dropdown{ position:absolute; right:0; top:calc(100% + 8px); min-width:212px; background:#fff; border:1px solid var(--border,#e6ddce); border-radius:12px; box-shadow:0 14px 34px rgba(0,0,0,.16); padding:8px; display:none; flex-direction:column; gap:4px; z-index:200; }
+.nav-menu-wrap.open .nav-menu-dropdown{ display:flex; }
+.nav-menu-dropdown .nav-track-btn{ width:100%; text-align:left; border:0; background:transparent; padding:10px 12px; border-radius:8px; }
+.nav-menu-dropdown .nav-track-btn:hover{ background:#f4efe7; color:var(--accent,#9a3b1c); }
+.nav-menu-trigger[aria-expanded="true"]{ border-color:var(--accent,#9a3b1c); color:var(--accent,#9a3b1c); }
+body.dark-mode .nav-menu-dropdown{ background:#17150f; border-color:#2a2823; }
+body.dark-mode .nav-menu-dropdown .nav-track-btn:hover{ background:#221f18; }
 body.dark-mode .hero-chip{ background:#17150f; color:#e8e2d8; border-color:#2a2823; }
 /* Dedicated Generate page: form hidden on landing, marketing hidden on the form page */
 body:not(.view-generate) #generate{ display:none !important; }
@@ -6043,6 +6051,95 @@ body.dark-mode .pbr-intro, body.dark-mode .pbr-summary, body.dark-mode .pbr-bull
     var bt = t.closest && t.closest(".pbr-btop"); if (bt) { var p = $("pbrp" + bt.getAttribute("data-i")); if (p) p.classList.toggle("open"); return; }
   });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") { var o = $("pbrPanel"); if (o && o.classList.contains("open")) closeP(); } });
+})();
+</script>
+
+<!-- ===== Saved Jobs menu — view saved jobs & apply directly (added) ===== -->
+<style>
+.sj-badge{ display:inline-block; background:#fff; color:var(--accent,#9a3b1c); border-radius:999px; font-size:.72rem; font-weight:800; padding:0 6px; margin-left:2px; }
+.sj-card{ display:flex; gap:12px; align-items:flex-start; justify-content:space-between; background:#fff; border:1px solid var(--border,#e6ddce); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+.sj-info{ flex:1; min-width:0; }
+.sj-actions{ display:flex; flex-direction:column; gap:8px; align-items:stretch; flex:0 0 auto; }
+.sj-apply{ text-decoration:none; padding:8px 16px; font-size:.9rem; text-align:center; }
+.sj-remove{ background:transparent; border:1px solid var(--border,#e6ddce); color:var(--muted,#6b6250); border-radius:8px; padding:6px 12px; font-size:.85rem; cursor:pointer; }
+.sj-remove:hover{ border-color:#c0392b; color:#c0392b; }
+.sj-nolink{ font-size:.82rem; color:var(--muted,#6b6250); text-align:center; }
+.sj-empty{ text-align:center; color:var(--muted,#6b6250); padding:42px 12px; line-height:1.7; }
+.sj-empty span{ font-size:.9rem; }
+body.dark-mode .sj-card{ background:#17150f; border-color:#2a2823; }
+</style>
+
+<div class="jobs-overlay" id="savedJobsOverlay">
+  <div class="jobs-modal">
+    <div class="jobs-modal-head">
+      <h3>📌 Saved Jobs</h3>
+      <button class="jobs-modal-x" id="savedJobsClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="jobs-modal-body" id="savedJobsBody"></div>
+  </div>
+</div>
+
+<script>
+// Saved Jobs menu: persistent list of jobs the user saved, apply directly (open the posting).
+(function () {
+  var KEY = "rf_saved_jobs";
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { return []; } }
+  function persist(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {} window.__savedJobs = list; badge(list.length); }
+  function keyOf(j) { return (j && (j.url || j.title || "")) || ""; }
+  function badge(n) { var b = $("navSavedJobsBtn"); if (b) b.innerHTML = "📌 Saved Jobs" + (n ? (" <span class='sj-badge'>" + n + "</span>") : ""); }
+  window.__addSavedJobs = function (jobs) {
+    var list = load(), seen = {};
+    list.forEach(function (j) { seen[keyOf(j)] = true; });
+    (jobs || []).forEach(function (j) { var k = keyOf(j); if (k && !seen[k]) { list.push(j); seen[k] = true; } });
+    persist(list);
+  };
+  function openP() { render(); var o = $("savedJobsOverlay"); if (o) { o.classList.add("open"); document.body.style.overflow = "hidden"; } }
+  function closeP() { var o = $("savedJobsOverlay"); if (o) { o.classList.remove("open"); document.body.style.overflow = ""; } }
+  function removeOne(k) { persist(load().filter(function (j) { return keyOf(j) !== k; })); render(); }
+  function render() {
+    var body = $("savedJobsBody"); if (!body) return;
+    var list = load();
+    if (!list.length) {
+      body.innerHTML = "<div class='sj-empty'>No saved jobs yet.<br><span>Open <b>Find Job Openings</b>, tick the roles you like, and click <b>Save selected jobs</b> — they'll show up here to apply anytime.</span></div>";
+      return;
+    }
+    body.innerHTML = "<p class='jobs-count'>" + list.length + " saved job" + (list.length > 1 ? "s" : "") + " — apply whenever you're ready:</p>"
+      + list.map(function (j) {
+        var k = keyOf(j);
+        var apply = j.url ? "<a class='pdf-btn sj-apply' href='" + esc(j.url) + "' target='_blank' rel='noopener'>Apply ↗</a>" : "<span class='sj-nolink'>No link</span>";
+        return "<div class='sj-card'><div class='sj-info'><div class='job-title'>" + esc(j.title || "Job")
+          + (j.source ? " <span class='job-source'>" + esc(j.source) + "</span>" : "") + "</div>"
+          + "<div class='job-meta'>" + esc(j.company || "") + (j.location ? " · " + esc(j.location) : "") + "</div>"
+          + (j.snippet ? "<div class='job-snippet'>" + esc(j.snippet) + "</div>" : "") + "</div>"
+          + "<div class='sj-actions'>" + apply + "<button class='sj-remove' data-k=\"" + esc(k) + "\">Remove</button></div></div>";
+      }).join("");
+  }
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (t.closest && t.closest("#navSavedJobsBtn")) { e.preventDefault(); openP(); return; }
+    if (t.id === "savedJobsClose" || t.id === "savedJobsOverlay") { closeP(); return; }
+    var rm = t.closest && t.closest(".sj-remove"); if (rm) { removeOne(rm.getAttribute("data-k")); return; }
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { var o = $("savedJobsOverlay"); if (o && o.classList.contains("open")) closeP(); } });
+  try { var l0 = load(); window.__savedJobs = l0; badge(l0.length); } catch (e) {}
+})();
+</script>
+
+<!-- ===== Navbar "Menu" dropdown toggle (added) ===== -->
+<script>
+(function () {
+  var wrap = document.querySelector(".nav-menu-wrap");
+  var btn = document.getElementById("navMenuBtn");
+  function setOpen(o) { if (!wrap) return; wrap.classList.toggle("open", o); if (btn) btn.setAttribute("aria-expanded", o ? "true" : "false"); }
+  document.addEventListener("click", function (e) {
+    if (!wrap) return;
+    if (e.target.closest && e.target.closest("#navMenuBtn")) { e.preventDefault(); setOpen(!wrap.classList.contains("open")); return; }
+    if (e.target.closest && e.target.closest("#navMenuDropdown")) { setOpen(false); return; }   // picked an item → close
+    if (!(e.target.closest && e.target.closest(".nav-menu-wrap"))) setOpen(false);              // clicked outside → close
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") setOpen(false); });
 })();
 </script>
 </body>
