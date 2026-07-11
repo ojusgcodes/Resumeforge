@@ -2699,17 +2699,19 @@ document.getElementById("result").innerHTML = `
 
     <div class="primary-actions fade-in">
         <h3 class="primary-actions-title">✅ Your resume is ready — pick your next move</h3>
-        <button id="openApplyHubBtn" class="hub-open-btn">🚀 Apply to Jobs — find roles &amp; apply</button>
-        <button id="openProofBtn" class="hub-open-btn hub-green">🔬 Proof &amp; Prep — make every claim defensible</button>
-        <button id="openVaultBtn" class="hub-open-btn hub-brown">🗄️ Career Evidence Vault — proof-backed, job-ready resumes</button>
-        <button id="openInterviewBtn" class="hub-open-btn hub-navy">🎤 Interview Prep — learn exactly what this job needs</button>
-    </div>
 
-    <div class="pbr-cta fade-in">
-        <div class="pbr-cta-tag">✨ The ResumeForge difference</div>
-        <h3>🏆 Build My Proof-Backed Resume</h3>
-        <p>A resume where <b>every line is clickable and jumps to the exact proof behind it</b> — your real projects, live demos, and evidence. Then share one link with recruiters; every claim is verifiable.</p>
-        <button id="openPbrBtn" class="pbr-btn">🏆 Build My Proof-Backed Resume →</button>
+        <button id="openPbrBtn" class="pbr-btn pbr-big">🏆 Build My Proof-Backed Resume →</button>
+        <p class="pbr-big-sub">Every line links to the exact proof behind it — share one link recruiters can verify.</p>
+
+        <div class="rf-dd" id="ddTools">
+            <button class="rf-dd-trigger" data-dd="ddTools">⚙️ More tools <span class="rf-dd-caret">▾</span></button>
+            <div class="rf-dd-panel">
+                <button id="openApplyHubBtn" class="hub-open-btn">🚀 Apply to Jobs — find roles &amp; apply</button>
+                <button id="openProofBtn" class="hub-open-btn hub-green">🔬 Proof &amp; Prep — make every claim defensible</button>
+                <button id="openVaultBtn" class="hub-open-btn hub-brown">🗄️ Career Evidence Vault</button>
+                <button id="openInterviewBtn" class="hub-open-btn hub-navy">🎤 Interview Prep</button>
+            </div>
+        </div>
     </div>
 
     <div class="github-analysis fade-in">
@@ -2830,10 +2832,13 @@ document.getElementById("result").innerHTML = `
     <div class="portfolio-banner fade-in">
         <h3>✨ Generate More From Your Resume</h3>
         <p>Turn your profile into a portfolio website, a tailored cover letter, or a full detailed CV.</p>
-        <div class="extras-buttons">
-            <button id="genPortfolioBtn" class="pdf-btn">🌐 Portfolio Website</button>
-            <button id="genCoverBtn" class="pdf-btn">📝 Cover Letter</button>
-            <button id="genCvBtn" class="pdf-btn">📄 Full CV</button>
+        <div class="rf-dd" id="ddMore">
+            <button class="rf-dd-trigger" data-dd="ddMore">➕ Create more <span class="rf-dd-caret">▾</span></button>
+            <div class="rf-dd-panel">
+                <button id="genPortfolioBtn" class="pdf-btn">🌐 Portfolio Website</button>
+                <button id="genCoverBtn" class="pdf-btn">📝 Cover Letter</button>
+                <button id="genCvBtn" class="pdf-btn">📄 Full CV</button>
+            </div>
         </div>
         <div id="portfolioResult"></div>
         <div id="coverResult"></div>
@@ -6140,6 +6145,31 @@ body.dark-mode .sj-card{ background:#17150f; border-color:#2a2823; }
     if (!(e.target.closest && e.target.closest(".nav-menu-wrap"))) setOpen(false);              // clicked outside → close
   });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") setOpen(false); });
+})();
+</script>
+
+<!-- ===== Results-area: big proof CTA + animated dropdowns (added) ===== -->
+<style>
+.pbr-big{ width:100%; font-size:1.15rem; padding:18px 22px; box-shadow:0 10px 26px rgba(154,59,28,.28); }
+.pbr-big-sub{ margin:8px 0 14px; font-size:.9rem; color:#6b5b4a; text-align:center; }
+.rf-dd-trigger{ width:100%; background:#fff; border:1px solid var(--border,#e6ddce); color:#5b4a38; border-radius:10px; padding:12px 16px; font-size:.98rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; }
+.rf-dd-trigger:hover{ border-color:var(--accent,#9a3b1c); color:var(--accent,#9a3b1c); }
+.rf-dd-caret{ transition:transform .25s ease; }
+.rf-dd.open .rf-dd-caret{ transform:rotate(180deg); }
+.rf-dd-panel{ max-height:0; overflow:hidden; opacity:0; transition:max-height .32s ease, opacity .25s ease, margin-top .25s ease; display:flex; flex-direction:column; gap:10px; margin-top:0; }
+.rf-dd.open .rf-dd-panel{ max-height:640px; opacity:1; margin-top:12px; }
+.rf-dd-panel .hub-open-btn{ margin-top:0; }
+.rf-dd-panel .pdf-btn{ width:100%; }
+body.dark-mode .rf-dd-trigger{ background:#17150f; color:#e8e2d8; border-color:#2a2823; }
+</style>
+<script>
+(function () {
+  document.addEventListener("click", function (e) {
+    var tr = e.target.closest ? e.target.closest(".rf-dd-trigger") : null;
+    if (!tr) return;
+    var dd = tr.closest(".rf-dd");
+    if (dd) dd.classList.toggle("open");
+  });
 })();
 </script>
 </body>
