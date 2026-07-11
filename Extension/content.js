@@ -9,29 +9,42 @@
 (function () {
   if (window.top !== window && !document.querySelector("input,textarea,select")) return;
 
-  // ---- (A) Sync ResumeForge site data ------------------------------------
-  // If this page is ResumeForge, copy its backend URL + login + queue into the
-  // extension automatically, and drop a marker so the site can show
-  // "extension connected". This is what makes setup a one-step thing: the user
-  // just opens ResumeForge while logged in and everything connects itself.
-  try {
-    const apiBase = localStorage.getItem("rf_api_base");
-    const token = localStorage.getItem("rf_token");
-    if (apiBase || token) {
-      // Let the site detect that the extension is installed.
-      document.documentElement.setAttribute("data-rf-ext", "1");
-      let queue = [];
-      try { queue = JSON.parse(localStorage.getItem("rf_autoapply_queue") || "[]"); } catch (e) {}
-      chrome.runtime.sendMessage({
-        type: "syncSite",
-        apiBase: apiBase || "",
-        token: token || "",
-        email: localStorage.getItem("rf_email") || "",
-        siteUrl: location.origin,
-        queue: Array.isArray(queue) ? queue : []
-      });
-    }
-  } catch (e) { /* cross-origin localStorage or none — ignore */ }
+  // ---- (A) Sync ResumeForge site data — ONLY on trusted ResumeForge origins.
+  // SECURITY: this content script must run on <all_urls> so it can fill forms on
+  // any job site. Without the allowlist below, ANY page that happens to have an
+  // "rf_token" key in its localStorage could hand a session token to the
+  // extension — or plant a fake one. So we only read/sync ResumeForge
+  // credentials when we're actually ON a ResumeForge page.
+  // NOTE: if you move to a custom domain, add it to RF_ORIGINS.
+  const RF_ORIGINS = [
+    "https://resumeforge-opal.vercel.app",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
+  ];
+  const RF_TRUSTED = RF_ORIGINS.indexOf(location.origin) !== -1;
+
+  if (RF_TRUSTED) {
+    try {
+      const apiBase = localStorage.getItem("rf_api_base");
+      const token = localStorage.getItem("rf_token");
+      if (apiBase || token) {
+        // Let the site detect that the extension is installed.
+        document.documentElement.setAttribute("data-rf-ext", "1");
+        let queue = [];
+        try { queue = JSON.parse(localStorage.getItem("rf_autoapply_queue") || "[]"); } catch (e) {}
+        chrome.runtime.sendMessage({
+          type: "syncSite",
+          apiBase: apiBase || "",
+          token: token || "",
+          email: localStorage.getItem("rf_email") || "",
+          siteUrl: location.origin,
+          queue: Array.isArray(queue) ? queue : []
+        });
+      }
+    } catch (e) { /* no localStorage access — ignore */ }
+  }
 
   // ---- helpers ------------------------------------------------------------
   const FIELD_TYPES = ["text", "email", "tel", "url", "number", "search", "file"];

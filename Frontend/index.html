@@ -2211,6 +2211,8 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
                     <button class="nav-track-btn" id="navVaultBtn" title="Career Evidence Vault">🗄️ Vault</button>
                     <button class="nav-track-btn" id="navSavedJobsBtn" title="Saved Jobs">📌 Saved Jobs</button>
                     <button class="nav-track-btn" id="navTrackerBtn" title="My Applications">📋 My Applications</button>
+                    <button class="nav-track-btn" id="navExportBtn" title="Download all of my data as JSON">⬇️ Download my data</button>
+                    <button class="nav-track-btn" id="navDeleteAccountBtn" title="Permanently delete my account and all my data">🗑️ Delete my account</button>
                 </div>
             </div>
             <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark / light mode">🌙</button>
@@ -2395,43 +2397,42 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
 
             <label>GitHub URL</label>
             <input id="github" type="text" placeholder="https://github.com/username">
-            <div class="linkedin-pdf-row">
-                <div>
-                    <label>Upload LinkedIn Profile PDF <span class="upload-badge">Recommended</span></label>
-                    <input
-                        type="file"
-                        id="linkedinPdf"
-                        accept="application/pdf,.pdf"
-                    />
+            <!-- Guided LinkedIn import: the user exports their OWN profile (legal,
+                 complete, un-blockable). No scraping. Same IDs as before so the
+                 generate handler is untouched. -->
+            <div class="li-import">
+                <div class="li-head">
+                    <span class="li-logo">in</span>
+                    <div>
+                        <h4>Import your LinkedIn <span class="li-time">~20 seconds</span></h4>
+                        <p>We read <b>your own LinkedIn export</b> — nothing is scraped, nothing is shared.</p>
+                    </div>
                 </div>
 
-                <p class="linkedin-pdf-instructions">
-                    To download it: open your LinkedIn profile, click More, choose Save to PDF, then upload that file here.
-                </p>
+                <ol class="li-steps">
+                    <li><span class="li-num">1</span><div><b>Open your profile</b><span>Click your photo, then View Profile</span></div></li>
+                    <li><span class="li-num">2</span><div><b>More &rarr; Save to PDF</b><span>LinkedIn downloads your full profile</span></div></li>
+                    <li><span class="li-num">3</span><div><b>Drop the file below</b><span>We read it instantly</span></div></li>
+                </ol>
+
+                <img class="li-gif" src="linkedin-import.gif" alt="How to save your LinkedIn profile as a PDF" onerror="this.style.display='none'">
+
+                <a class="li-open" href="https://www.linkedin.com/in/me/" target="_blank" rel="noopener">Open my LinkedIn profile &#8599;</a>
+
+                <div class="li-drop" id="liDrop">
+                    <div class="li-drop-icon">📄</div>
+                    <div class="li-drop-text"><b>Drop your LinkedIn PDF here</b><span>or click to choose a file</span></div>
+                    <div class="li-file" id="liFileName"></div>
+                </div>
+                <input type="file" id="linkedinPdf" accept="application/pdf,.pdf" class="li-hidden-input">
+
+                <details class="li-fallback">
+                    <summary>No PDF? Upload screenshots instead</summary>
+                    <p>Upload screenshots showing your <b>Profile Header</b>, <b>Education</b>, <b>Experience</b>, and (optionally) <b>Skills</b>.</p>
+                    <input type="file" id="linkedinImage" accept="image/*" multiple>
+                    <div class="li-file" id="liImgCount"></div>
+                </details>
             </div>
-
-            <label>LinkedIn Profile Screenshots <span class="upload-badge fallback-badge">Fallback</span></label>
-
-<input
-    type="file"
-    id="linkedinImage"
-    accept="image/*"
-    multiple
-/>
-<div class="linkedin-help">
-
-    <h4>📸 Upload LinkedIn Screenshots</h4>
-
-    <p>If the PDF is unavailable, upload screenshots containing:</p>
-
-    <ul>
-        <li>✅ Profile Header</li>
-        <li>✅ Education</li>
-        <li>✅ Experience</li>
-        <li>✅ Skills (Optional)</li>
-    </ul>
-
-</div>
 
             <!-- Non-developer path: no GitHub/LinkedIn needed -->
             <div class="nondev-box">
@@ -2825,6 +2826,7 @@ document.getElementById("result").innerHTML = `
             <p style="margin-bottom:12px;">✏️ Want full control? Open your resume in a Canva-style editor:</p>
             <button id="editor1Btn" class="pdf-btn">🧩 Editor 1 · Blocks (ATS-friendly)</button>
             <button id="editor2Btn" class="pdf-btn">🖼️ Editor 2 · Canvas (free design)</button>
+            <p class="ats-warn">⚠️ <b>Canvas designs may not be readable by ATS scanners.</b> Free-form layouts (rotated, layered, or image-based elements) can fail automated resume parsing. If your application goes through an ATS, export from <b>Editor 1 · Blocks</b> or use a standard template.</p>
         </div>
 
     </div>
@@ -5984,7 +5986,9 @@ body.dark-mode .pbr-intro, body.dark-mode .pbr-summary, body.dark-mode .pbr-bull
         <h3>📣 Share with a recruiter</h3>
         <p>Create one public link. Every send is a chance for a recruiter to click your proof and ask who made this.</p>
         <button class="pbr-btn ghost" id="pbrShare">🔗 Create shareable link</button>
+        <button class="pbr-btn ghost" id="pbrViews" style="margin-left:8px;">👀 Who opened my proof?</button>
         <div id="pbrShareOut" style="margin-top:12px;"></div>
+        <div id="pbrViewsOut" style="margin-top:10px;"></div>
       </div>
     </div>
   </div>
@@ -6170,6 +6174,212 @@ body.dark-mode .rf-dd-trigger{ background:#17150f; color:#e8e2d8; border-color:#
     var dd = tr.closest(".rf-dd");
     if (dd) dd.classList.toggle("open");
   });
+})();
+</script>
+
+<!-- ===== P1: account deletion + ATS warning styling (added) ===== -->
+<style>
+.ats-warn{ margin-top:12px; padding:10px 12px; background:#fff4e5; border:1px solid #f0c98a; border-radius:9px; font-size:.85rem; color:#7a5a1e; text-align:left; line-height:1.5; }
+#navDeleteAccountBtn{ color:#c0392b; }
+#navDeleteAccountBtn:hover{ background:#fdeaea !important; border-color:#c0392b; color:#c0392b; }
+body.dark-mode .ats-warn{ background:#2a2318; border-color:#5c4a2a; color:#e8d5a8; }
+</style>
+<script>
+// P1: full account deletion — removes the user and all their data.
+(function () {
+  var API = (location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.protocol === "file:")
+    ? "http://localhost:8000" : "https://resumeforge-backend-1bu3.onrender.com";
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest || !e.target.closest("#navDeleteAccountBtn")) return;
+    var tok = null;
+    try { tok = localStorage.getItem("rf_token"); } catch (err) {}
+    if (!tok) { alert("Please log in first."); return; }
+    if (!confirm("Delete your account?\n\nThis permanently removes your resumes, evidence vault, applications, and any shared proof pages.\n\nThis cannot be undone.")) return;
+    if (!confirm("Last chance — really delete everything?")) return;
+    fetch(API + "/account/delete", { method: "POST", headers: { "Authorization": "Bearer " + tok } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.success) {
+          try {
+            localStorage.removeItem("rf_token");
+            localStorage.removeItem("rf_email");
+            localStorage.removeItem("rf_name");
+          } catch (err) {}
+          alert("Your account and all your data have been deleted.");
+          location.reload();
+        } else {
+          alert((d && d.error) || "Could not delete the account. Please try again.");
+        }
+      })
+      .catch(function () { alert("Could not reach the server. Please try again."); });
+  });
+})();
+</script>
+
+<!-- ===== P3: proof-page view analytics + data export (added) ===== -->
+<style>
+.pv-box{ background:#fff; border:1px solid var(--border,#e6ddce); border-radius:12px; padding:14px 16px; }
+.pv-total{ font-size:1.05rem; font-weight:800; color:var(--accent,#9a3b1c); margin-bottom:8px; }
+.pv-row{ display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-top:1px solid var(--border,#e6ddce); font-size:.9rem; }
+.pv-row a{ color:var(--accent,#9a3b1c); font-weight:600; text-decoration:none; word-break:break-all; }
+.pv-n{ font-weight:800; white-space:nowrap; }
+.pv-empty{ color:#6b5b4a; font-size:.9rem; }
+body.dark-mode .pv-box{ background:#17150f; border-color:#2a2823; }
+</style>
+<script>
+// P3: (a) show the candidate how many times recruiters opened their proof page,
+//     (b) let them export all of their data as JSON (portability).
+(function () {
+  var API = (location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.protocol === "file:")
+    ? "http://localhost:8000" : "https://resumeforge-backend-1bu3.onrender.com";
+  function tok() { try { return localStorage.getItem("rf_token"); } catch (e) { return null; } }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+
+  function showViews() {
+    var out = document.getElementById("pbrViewsOut");
+    if (!out) return;
+    var t = tok();
+    if (!t) { out.innerHTML = "<div class='pv-empty'>Log in to see who opened your proof pages.</div>"; return; }
+    out.innerHTML = "<div class='pv-empty'>Checking…</div>";
+    fetch(API + "/proof-resume/shares", { headers: { "Authorization": "Bearer " + t } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.success) { out.innerHTML = "<div class='pv-empty'>⚠️ " + esc((d && d.error) || "Could not load.") + "</div>"; return; }
+        var shares = d.shares || [];
+        if (!shares.length) { out.innerHTML = "<div class='pv-empty'>No shared proof pages yet — create a link above and send it to a recruiter.</div>"; return; }
+        var total = d.total_views || 0;
+        var h = "<div class='pv-box'><div class='pv-total'>👀 " + total + " view" + (total === 1 ? "" : "s")
+              + " across " + shares.length + " proof page" + (shares.length === 1 ? "" : "s") + "</div>";
+        shares.forEach(function (s) {
+          var url = API + "/p/" + s.slug;
+          h += "<div class='pv-row'><a href='" + esc(url) + "' target='_blank' rel='noopener'>/p/" + esc(s.slug) + "</a>"
+             + "<span class='pv-n'>" + (s.views || 0) + " view" + ((s.views || 0) === 1 ? "" : "s") + "</span></div>";
+        });
+        out.innerHTML = h + "</div>";
+      })
+      .catch(function () { out.innerHTML = "<div class='pv-empty'>⚠️ Could not reach the server.</div>"; });
+  }
+
+  function exportData() {
+    var t = tok();
+    if (!t) { alert("Please log in first."); return; }
+    fetch(API + "/account/export", { headers: { "Authorization": "Bearer " + t } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.success) { alert((d && d.error) || "Could not export your data."); return; }
+        var blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "resumeforge-my-data.json";
+        document.body.appendChild(a); a.click();
+        setTimeout(function () { a.remove(); }, 100);
+      })
+      .catch(function () { alert("Could not reach the server."); });
+  }
+
+  document.addEventListener("click", function (e) {
+    if (e.target.closest && e.target.closest("#pbrViews")) { e.preventDefault(); showViews(); return; }
+    if (e.target.closest && e.target.closest("#navExportBtn")) { e.preventDefault(); exportData(); return; }
+  });
+})();
+</script>
+
+<!-- ===== Guided LinkedIn import: 3 steps + drag & drop (added) ===== -->
+<style>
+.li-import{ margin:16px 0; padding:18px; background:#fff; border:1px solid var(--border,#e6ddce); border-radius:14px; }
+.li-head{ display:flex; gap:12px; align-items:flex-start; margin-bottom:14px; }
+.li-logo{ flex:0 0 auto; width:34px; height:34px; border-radius:7px; background:#0a66c2; color:#fff; font-weight:800; display:flex; align-items:center; justify-content:center; }
+.li-head h4{ margin:0 0 3px; font-size:1.02rem; color:#1c1712; }
+.li-time{ font-size:.72rem; font-weight:700; background:#eaf5ee; color:#1d7a4d; padding:2px 8px; border-radius:999px; margin-left:6px; vertical-align:middle; }
+.li-head p{ margin:0; font-size:.86rem; color:#6b5b4a; }
+.li-steps{ list-style:none; margin:0 0 14px; padding:0; display:flex; gap:10px; flex-wrap:wrap; }
+.li-steps li{ flex:1; min-width:150px; display:flex; gap:9px; align-items:flex-start; background:#faf7f2; border:1px solid var(--border,#e6ddce); border-radius:10px; padding:10px 11px; }
+.li-num{ flex:0 0 auto; width:22px; height:22px; border-radius:50%; background:var(--accent,#9a3b1c); color:#fff; font-size:.78rem; font-weight:800; display:flex; align-items:center; justify-content:center; }
+.li-steps b{ display:block; font-size:.85rem; color:#2b2b2b; }
+.li-steps span{ font-size:.78rem; color:#6b5b4a; }
+.li-gif{ display:block; width:100%; max-width:460px; margin:0 auto 12px; border-radius:10px; border:1px solid var(--border,#e6ddce); }
+.li-open{ display:inline-block; margin-bottom:12px; font-size:.88rem; font-weight:700; color:#0a66c2; text-decoration:none; }
+.li-open:hover{ text-decoration:underline; }
+.li-drop{ border:2px dashed var(--accent,#9a3b1c); border-radius:12px; background:#faf7f2; padding:22px 16px; text-align:center; cursor:pointer; transition:background .15s ease, border-color .15s ease, transform .1s ease; }
+.li-drop:hover{ background:#f6efe6; }
+.li-drop.drag{ background:#eaf5ee; border-color:#1d7a4d; transform:scale(1.01); }
+.li-drop.done{ border-style:solid; border-color:#1d7a4d; background:#eaf5ee; }
+.li-drop-icon{ font-size:1.8rem; margin-bottom:4px; }
+.li-drop-text b{ display:block; font-size:.95rem; color:#2b2b2b; }
+.li-drop-text span{ font-size:.82rem; color:#6b5b4a; }
+.li-file{ margin-top:8px; font-size:.85rem; font-weight:700; color:#1d7a4d; }
+.li-hidden-input{ display:none; }
+.li-fallback{ margin-top:12px; }
+.li-fallback summary{ cursor:pointer; font-size:.87rem; font-weight:600; color:#6b5b4a; }
+.li-fallback summary:hover{ color:var(--accent,#9a3b1c); }
+.li-fallback p{ font-size:.85rem; color:#6b5b4a; margin:8px 0; }
+body.dark-mode .li-import{ background:#17150f; border-color:#2a2823; }
+body.dark-mode .li-steps li, body.dark-mode .li-drop{ background:#221f18; border-color:#2a2823; }
+@media(max-width:620px){ .li-steps{ flex-direction:column; } }
+</style>
+<script>
+// Guided LinkedIn import: click-or-drag the user's own exported PDF.
+(function () {
+  var drop = document.getElementById("liDrop");
+  var input = document.getElementById("linkedinPdf");
+  var nameEl = document.getElementById("liFileName");
+  var imgIn = document.getElementById("linkedinImage");
+  var imgCount = document.getElementById("liImgCount");
+  if (!drop || !input || !nameEl) return;
+
+  function accept(f) {
+    nameEl.style.color = "";
+    nameEl.textContent = "✅ " + f.name;
+    drop.classList.add("done");
+  }
+  function reject(msg) {
+    nameEl.style.color = "#c0392b";
+    nameEl.textContent = "⚠️ " + msg;
+    drop.classList.remove("done");
+  }
+  function isPdf(f) {
+    return f && (f.type === "application/pdf" || /\.pdf$/i.test(f.name || ""));
+  }
+
+  drop.addEventListener("click", function () { input.click(); });
+  input.addEventListener("change", function () {
+    if (input.files && input.files[0]) {
+      if (isPdf(input.files[0])) accept(input.files[0]);
+      else reject("That is not a PDF. Use LinkedIn's Save to PDF, or use the screenshot option below.");
+    }
+  });
+
+  ["dragenter", "dragover"].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); drop.classList.add("drag"); });
+  });
+  ["dragleave", "dragend"].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); drop.classList.remove("drag"); });
+  });
+  drop.addEventListener("drop", function (e) {
+    e.preventDefault(); e.stopPropagation(); drop.classList.remove("drag");
+    var files = e.dataTransfer && e.dataTransfer.files;
+    if (!files || !files.length) return;
+    if (!isPdf(files[0])) {
+      reject("That is not a PDF. Use LinkedIn's Save to PDF, or use the screenshot option below.");
+      return;
+    }
+    try { input.files = files; } catch (err) {}   // hand the file to the real input
+    accept(files[0]);
+  });
+
+  // Stop the browser from navigating away if a file is dropped outside the zone.
+  ["dragover", "drop"].forEach(function (ev) {
+    window.addEventListener(ev, function (e) {
+      if (e.target !== drop && !drop.contains(e.target)) e.preventDefault();
+    });
+  });
+
+  if (imgIn && imgCount) {
+    imgIn.addEventListener("change", function () {
+      var n = imgIn.files ? imgIn.files.length : 0;
+      imgCount.textContent = n ? ("✅ " + n + " screenshot" + (n > 1 ? "s" : "") + " selected") : "";
+    });
+  }
 })();
 </script>
 </body>

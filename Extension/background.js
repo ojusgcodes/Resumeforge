@@ -68,6 +68,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Called by the content script when it finds ResumeForge data in the
         // page's localStorage (backend URL / token / email / queue). Only
         // overwrites when a value is actually present.
+        // SECURITY (defence in depth): never accept a session token unless the
+        // message genuinely came from a ResumeForge page. The content script
+        // already gates this, but we re-verify the sender here too.
+        const TRUSTED_ORIGINS = [
+          "https://resumeforge-opal.vercel.app",
+          "http://localhost:8000",
+          "http://127.0.0.1:8000",
+          "http://localhost:3000",
+          "http://127.0.0.1:3000"
+        ];
+        const senderUrl = (sender && sender.url) || "";
+        const trusted = TRUSTED_ORIGINS.some(o => senderUrl === o || senderUrl.indexOf(o + "/") === 0);
+        if (!trusted) {
+          console.warn("ResumeForge: ignored syncSite from untrusted origin:", senderUrl);
+          sendResponse({ ok: false, error: "untrusted origin" });
+          return;
+        }
         const patch = {};
         if (msg.apiBase) patch.rf_api_base = (msg.apiBase || "").replace(/\/+$/, "");
         if (msg.token) patch.rf_token = msg.token;
