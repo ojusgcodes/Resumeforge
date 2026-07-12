@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ResumeForge — Jargon Decoder</title>
+<style>
+  :root{--accent:#9a3b1c;--ink:#2c1e16;--muted:#7a6a5d;--bg:#f7f1e6;--card:#fffaf3;--line:rgba(154,59,28,.16);}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.55;}
+  .wrap{max-width:900px;margin:0 auto;padding:36px 20px 80px;}
+  h1{font-size:30px;margin:0 0 6px;}
+  .sub{color:var(--muted);margin:0 0 24px;font-size:15.5px;}
+  .searchbar{position:sticky;top:0;background:var(--bg);padding:12px 0 14px;z-index:5;}
+  #q{width:100%;padding:13px 15px;font-size:16px;border:2px solid var(--line);border-radius:10px;
+    background:#fff;color:var(--ink);outline:none;}
+  #q:focus{border-color:var(--accent);}
+  .count{font-size:13px;color:var(--muted);margin-top:7px;}
+  h2{font-size:13px;letter-spacing:1.1px;text-transform:uppercase;color:var(--accent);
+    margin:30px 0 10px;font-weight:800;}
+  .t{background:var(--card);border:1px solid var(--line);border-radius:11px;
+    padding:14px 16px;margin-bottom:9px;}
+  .t b{font-size:16px;}
+  .t .d{margin:4px 0 0;}
+  .t .y{margin:7px 0 0;font-size:14px;color:var(--muted);border-left:3px solid var(--line);padding-left:10px;}
+  .t .y strong{color:var(--accent);font-weight:700;}
+  code{background:#f1e7d9;padding:1px 5px;border-radius:4px;font-size:13.5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+  .none{color:var(--muted);padding:24px 0;display:none;}
+  .note{background:#fff3e6;border:1px solid var(--line);border-radius:11px;padding:14px 16px;
+    margin:0 0 22px;font-size:14.5px;}
+  footer{margin-top:40px;color:var(--muted);font-size:13.5px;border-top:1px solid var(--line);padding-top:16px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Jargon Decoder</h1>
+  <p class="sub">Every term used while building ResumeForge — in plain English, pointed at the exact place it lives in <em>your</em> code.</p>
+
+  <div class="note">
+    <strong>How to use this:</strong> don't read it front to back. Keep it open while you work. When a word
+    lands that you don't own yet, search it here, then <em>go open that function in your editor</em> and look at it.
+    The definition alone won't stick. The definition plus five seconds of looking at your own code will.
+  </div>
+
+  <div class="searchbar">
+    <input id="q" type="search" placeholder="Search a term… (try: webhook, middleware, OOM)" autocomplete="off">
+    <div class="count" id="count"></div>
+  </div>
+
+  <div id="list"></div>
+  <p class="none" id="none">Nothing matches that. Try a shorter word.</p>
+
+  <footer>
+    The fastest way to make all of this permanent: pick <strong>one function a day</strong> from
+    <code>Backend/main.py</code>, read it top to bottom, and circle every word you can't explain out loud.
+    Look those up here. Ten minutes. In a month you'll read your own backend without flinching.
+  </footer>
+</div>
+
+<script>
+const TERMS = [
+  ["Python — the pieces", [
+    ["Function", "A named block of code you can run over and over by calling its name. Defined with <code>def</code>.", "<strong>_grant_pro()</strong> in main.py is a function — it gives a user 3 months of Pro. You 'call' it from the webhook."],
+    ["Argument / parameter", "The values you hand a function when you call it. <code>_grant_pro(uid, 3, ...)</code> — <code>uid</code> and <code>3</code> are arguments.", "<strong>build_resume_pdf(basename, resume_text, name, email…)</strong> — everything in those brackets is a parameter."],
+    ["Return", "What a function hands back to whoever called it. <code>return plan</code> sends the answer back.", "<strong>_plan_for_user()</strong> returns the word <code>'pro'</code> or <code>'free'</code>."],
+    ["Module / import", "A module is one Python file. <code>import</code> pulls in code someone else wrote so you can use it.", "<code>import hmac</code> at the top of main.py — you didn't write HMAC, you borrowed it."],
+    ["Library / package / dependency", "Code written by other people that your project depends on. Listed in <code>requirements.txt</code>.", "<strong>reportlab</strong> (makes PDFs), <strong>fastapi</strong> (the web server), <strong>requests</strong> (fetches URLs)."],
+    ["Decorator", "A line starting with <code>@</code> stuck above a function that gives it a superpower. Reads like a label.", "<strong>@app.post(\"/billing/checkout\")</strong> — this decorator says 'when someone POSTs to that URL, run the function below'."],
+    ["Dictionary (dict)", "A lookup table of key → value, written with <code>{}</code>. Like a JSON object.", "<strong>TEMPLATE_ACCENTS</strong> maps <code>'green'</code> → <code>'#1d7a4d'</code>."],
+    ["List", "An ordered collection, written with <code>[]</code>. <code>[\"a\", \"b\", \"c\"]</code>.", "The bullets of a resume are handled as a list of strings."],
+    ["try / except", "'Attempt this; if it explodes, do that instead, but don't crash the whole app.'", "<strong>download_resume_pdf</strong> tries WeasyPrint, and on any error falls back to reportlab. That's a try/except."],
+    ["None", "Python's word for 'nothing here'. Not zero, not empty — absent.", "<strong>render_template_pdf()</strong> returns <code>None</code> when there's no HTML template, which tells the caller to use the fallback."],
+    ["Global / shared state", "A value that lives for the whole program, not just one request. Dangerous when many users share it.", "The old <strong>latest_resume.txt</strong> was shared state — that's exactly why user B could download user A's resume."],
+    ["Constant", "A value you set once and never change. Written in ALL_CAPS by convention.", "<strong>SEASON_PASS_MONTHS = 3</strong>."]
+  ]],
+  ["Web &amp; APIs", [
+    ["API", "A way for one program to talk to another over the internet, in structured data instead of web pages.", "Your whole <strong>Backend/main.py</strong> is an API. The website talks to it; so does the Chrome extension."],
+    ["Endpoint / route", "One specific URL your API answers on, and the code behind it.", "<strong>/billing/checkout</strong> is an endpoint. So is <strong>/generate</strong>."],
+    ["GET vs POST", "GET = 'give me something' (data in the URL). POST = 'here, take this' (data in the body). Anyone can trigger a GET just by visiting a link.", "The leak you had was a <strong>GET</strong> — visiting a URL was enough to download someone's resume. The fix routes it through a POST that carries the data with it."],
+    ["Request body", "The chunk of data sent along with a POST. Invisible in the URL.", "When you download a PDF, your resume text travels in the request body — not on the server's disk."],
+    ["JSON", "The universal text format for structured data: <code>{\"plan\": \"pro\", \"days_left\": 87}</code>.", "Every response your API sends back is JSON."],
+    ["Status code", "A 3-digit number saying how it went. 200 = fine. 402 = payment required. 410 = gone forever. 429 = slow down. 500 = server broke.", "Your Pro paywall returns <strong>402</strong>; the deleted leaky endpoints return <strong>410</strong>; the daily limit returns <strong>429</strong>."],
+    ["Middleware", "Code that runs on <em>every</em> request before it reaches the endpoint. A checkpoint at the door.", "<strong>rate_limit_mw</strong> — it counts your AI calls, checks your plan, and can turn you away before your request ever reaches /generate."],
+    ["Header", "Extra info attached to a request that isn't the body. Auth tokens travel here.", "<code>Authorization: Bearer &lt;token&gt;</code> — that's how the server knows who you are."],
+    ["Webhook", "A URL <em>you</em> expose so someone else's server can call <em>you</em> when something happens. The reverse of an API call.", "<strong>/webhook/razorpay</strong> — Razorpay calls it the moment a student pays, and that's the only thing that grants Pro."],
+    ["CORS", "Browser rule about which websites are allowed to call your API. Blocks strangers' sites from using your backend.", "<code>ALLOWED_ORIGINS</code> in your env vars."],
+    ["Frontend / backend", "Frontend = what runs in the user's browser (your index.html). Backend = what runs on your server (main.py).", "Rule of thumb: <em>never</em> trust the frontend. Anyone can edit it. That's why Pro is decided in the backend."]
+  ]],
+  ["Databases", [
+    ["Schema", "The blueprint of your tables — what columns exist and what type each holds.", "<strong>Backend/schema.sql</strong>. You have to run it in Supabase or the new billing tables won't exist."],
+    ["Table / row / column", "A table is a spreadsheet. A row is one record (one user). A column is one field (email).", "<strong>subscriptions</strong> table: one row per user, columns for plan and expiry."],
+    ["Primary key", "The column that uniquely identifies a row. No duplicates allowed.", "<code>user_id</code> is the primary key of <strong>subscriptions</strong> — one subscription row per person."],
+    ["UNIQUE constraint", "The database physically refuses to store two rows with the same value here.", "<code>provider_payment_id UNIQUE</code> in <strong>payments</strong> — this is what makes a replayed webhook harmless."],
+    ["Index", "A shortcut that makes lookups fast, like the index at the back of a book.", "<code>create index idx_resumes_user on resumes(user_id)</code>."],
+    ["Migration", "Changing the shape of a live database that already has data in it. Risky, which is why we avoided it.", "We put billing in <em>new</em> tables rather than adding columns to <code>users</code> — so no migration was needed."],
+    ["SQL injection", "An attack where user input is smuggled in as database commands. Prevented by using <code>?</code> placeholders, never string-glueing.", "Your <code>db_exec(conn, \"… WHERE id = ?\", (uid,))</code> style is the safe one."],
+    ["SQLite vs Postgres", "SQLite = a single file on disk, great for local dev. Postgres = a real database server, for production.", "You use SQLite locally, Supabase Postgres in production. <code>_q()</code> translates between their two dialects."]
+  ]],
+  ["Security", [
+    ["Hashing", "A one-way scramble. You can turn a password into a hash, but never the hash back into the password.", "<strong>PBKDF2-HMAC-SHA256</strong> in your auth code. You never store anyone's actual password."],
+    ["Salt", "Random junk mixed into each password before hashing, so two people with the same password get different hashes.", "Your <code>users</code> table has a <code>salt</code> column per user."],
+    ["HMAC / signature verification", "A way to prove a message really came from who it claims, and wasn't altered on the way. Both sides share a secret.", "<strong>_hmac_ok()</strong> — how you know a 'payment succeeded' message is really from Razorpay and not from someone faking it."],
+    ["Constant-time compare", "Comparing two secrets in a way that takes the same time whether they match or not, so attackers can't guess character by character.", "<code>hmac.compare_digest()</code> — never use <code>==</code> for secrets."],
+    ["Idempotency", "Doing the same thing twice has the same effect as doing it once. Essential for payments.", "A webhook that fires twice must not grant two passes. Your <code>provider_payment_id UNIQUE</code> guarantees it."],
+    ["Replay attack", "Someone captures a valid message and sends it again to get the effect twice.", "Tested in <strong>test_billing.py</strong> (B4): a replayed webhook grants zero extra days."],
+    ["Fail closed / fail open", "When something goes wrong, do you deny access (closed) or allow it (open)? Secrets should always fail closed.", "If your webhook secret isn't configured, <code>_hmac_ok</code> returns False — it rejects everything rather than accepting everything."],
+    ["Auth token / session token", "A random string the server gives you at login, which your browser sends back on every request to prove it's you.", "<code>rf_token</code> in localStorage."],
+    ["Prompt injection", "Hiding instructions inside content the AI reads, to hijack it. E.g. writing 'ignore previous instructions' in your own README.", "<strong>_clean_untrusted()</strong> and <strong>_fence()</strong> strip and quarantine this before it reaches the model."],
+    ["Rate limiting", "Capping how many requests one person can make, so nobody can hammer your server or burn your AI budget.", "<code>RATE_LIMIT_MAX</code> (bursts) and <code>DAILY_QUOTA_*</code> (per day)."],
+    ["Environment variable", "A secret or setting fed to the app from outside the code, so keys never live in your GitHub repo.", "<code>GEMINI_API_KEY</code>, <code>RAZORPAY_WEBHOOK_SECRET</code>. Set them in Render, never in main.py."]
+  ]],
+  ["Performance &amp; hosting", [
+    ["Cold start", "A sleeping server takes ~50 seconds to wake and answer the first request. First-time visitors just leave.", "Render's free tier sleeps after 15 minutes idle. The $7 Starter plan doesn't."],
+    ["OOM (out of memory)", "The server ran out of RAM, so Linux killed the whole process. You <em>cannot</em> catch this in code — that's the point.", "This is exactly what Chromium did to you on the 512MB plan. It's why we won't put it back."],
+    ["Latency", "How long a request takes end to end. p95 latency = 'the slow 5% still finish within this'.", "Your Gemini calls dominate this, which is why they were parallelised."],
+    ["I/O-bound", "Slow because it's <em>waiting</em> on the network or disk, not because it's calculating. Waiting can be done in parallel, cheaply.", "Fetching 5 GitHub repos: waiting 5 times. <strong>_parallel()</strong> waits for all 5 at once."],
+    ["Thread pool", "A small crew of workers that run several waiting-jobs at the same time.", "<code>ThreadPoolExecutor</code> inside <strong>_parallel()</strong>."],
+    ["Cache / TTL", "Remembering an answer so you don't recompute it. TTL = how long before you throw it away.", "<strong>_cache_set(key, value, ttl=300)</strong> — your plan is cached for 5 minutes, so we don't hit the DB on every request."],
+    ["Fallback / graceful degradation", "When plan A fails, quietly do a worse-but-working plan B instead of showing an error.", "PDF: try WeasyPrint → fall back to reportlab. AI: try Gemini → retry → fall back to Claude."],
+    ["Retry with backoff + jitter", "If it fails, wait and try again — waiting longer each time, plus a random nudge so everyone doesn't retry in unison.", "<strong>_ResilientLLM</strong> does this when Gemini rate-limits you."],
+    ["Ephemeral filesystem", "Files you write on the server vanish on the next deploy or restart. Never store real data there.", "Another reason <code>latest_resume.txt</code> was a bad idea."],
+    ["Container / Docker / Dockerfile", "A recipe that packages your app <em>plus</em> the exact system libraries it needs, so it runs identically everywhere.", "<strong>Backend/Dockerfile</strong> — only needed if you ever switch on the HTML templates."],
+    ["Race condition", "Two things happening at once and stepping on each other, producing a result that depends on timing.", "Two users generating at the same moment, both writing <code>latest_resume.txt</code>. Whoever wrote last, wins — and the other person downloads the wrong resume."]
+  ]],
+  ["Testing &amp; workflow", [
+    ["Unit test", "A small script that runs one piece of your code and asserts the answer is right. Runs in seconds, catches breakage instantly.", "<strong>Backend/test_billing.py</strong>. Run it: <code>py -m pytest test_billing.py -v</code>."],
+    ["Assert", "'This must be true, or fail loudly.' The backbone of every test.", "<code>assert plan_of(uid) == 'pro'</code>."],
+    ["Mocking", "Faking an external thing (Gemini, GitHub, Razorpay) in a test, so the test is fast, free and deterministic.", "Your evidence-vault tests mock Gemini — otherwise every test run would cost money and need a network."],
+    ["Regression", "A thing that used to work and now doesn't, because of a change you just made. Tests exist to catch these.", "Re-running test_billing.py after the security fix proved I hadn't broken billing."],
+    ["Syntax error", "The code isn't valid Python at all — it won't even start. Different from a bug, which runs but does the wrong thing.", "<code>python -m py_compile main.py</code> catches these before you deploy."],
+    ["Commit / push / deploy", "Commit = save a snapshot with a message. Push = send it to GitHub. Deploy = Render/Vercel pick it up and go live.", "<code>git add … && git commit -m \"…\" && git push</code>. Never <code>git add .</code> — it sweeps up files you don't want."],
+    ["Refactor", "Rewriting code so it's cleaner, without changing what it does from the outside.", "Turning <code>_resume_context()</code> from 'reads a shared file' into 'takes arguments' was a refactor — and it removed a bug."],
+    ["Technical debt", "Shortcuts you took that will cost you later, with interest.", "<code>latest_resume.txt</code> was technical debt. The interest was a data leak."]
+  ]]
+];
+
+const list = document.getElementById("list");
+const q = document.getElementById("q");
+const countEl = document.getElementById("count");
+const noneEl = document.getElementById("none");
+let total = 0;
+
+TERMS.forEach(function (group) {
+  const h = document.createElement("h2");
+  h.textContent = group[0].replace("&amp;", "&");
+  h.dataset.group = "1";
+  list.appendChild(h);
+  group[1].forEach(function (t) {
+    total++;
+    const d = document.createElement("div");
+    d.className = "t";
+    d.innerHTML = "<b>" + t[0] + "</b><p class='d'>" + t[1] + "</p><p class='y'><strong>In your code:</strong> " + t[2] + "</p>";
+    d.dataset.text = (t[0] + " " + t[1] + " " + t[2]).toLowerCase().replace(/<[^>]+>/g, "");
+    list.appendChild(d);
+  });
+});
+
+function render() {
+  const term = q.value.trim().toLowerCase();
+  let shown = 0;
+  list.querySelectorAll(".t").forEach(function (el) {
+    const hit = !term || el.dataset.text.indexOf(term) !== -1;
+    el.style.display = hit ? "" : "none";
+    if (hit) shown++;
+  });
+  list.querySelectorAll("h2").forEach(function (h) {
+    let n = h.nextElementSibling, any = false;
+    while (n && n.tagName !== "H2") {
+      if (n.style.display !== "none") { any = true; break; }
+      n = n.nextElementSibling;
+    }
+    h.style.display = any ? "" : "none";
+  });
+  noneEl.style.display = shown ? "none" : "block";
+  countEl.textContent = term ? (shown + " of " + total + " terms") : (total + " terms — start typing to filter");
+}
+q.addEventListener("input", render);
+render();
+</script>
+</body>
+</html>

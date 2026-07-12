@@ -159,6 +159,32 @@ create table if not exists shared_proofs (
     created_at timestamptz not null default now()
 );
 
+-- Billing: the Placement Season Pass (3 months of Pro).
+-- Kept in its own table so `users` never needs an ALTER.
+create table if not exists subscriptions (
+    user_id      bigint primary key references users(id) on delete cascade,
+    plan         text not null default 'free',
+    expires_at   double precision,          -- epoch seconds
+    provider     text,
+    provider_ref text,
+    status       text,
+    updated_at   double precision
+);
+
+create table if not exists payments (
+    id                  bigserial primary key,
+    user_id             bigint,
+    provider            text,
+    provider_payment_id text unique,        -- webhook idempotency
+    amount              integer,
+    currency            text,
+    plan                text,
+    months              integer,
+    status              text,
+    raw                 text,
+    created_at          double precision
+);
+
 -- Helpful indexes
 create index if not exists idx_resumes_user  on resumes(user_id);
 create index if not exists idx_events_name  on events(event);

@@ -4,7 +4,6 @@ python-multipart
 google-generativeai
 pillow
 reportlab
-playwright
 pypdf
 requests
 psycopg2-binary

@@ -333,8 +333,20 @@ AI_PATHS = {
     "/evidence-quality-gate", "/interview-prep", "/interview-prep/ask",
     "/mock-interview/next", "/mock-interview/report",
 }
-DAILY_QUOTA_ANON = int(os.getenv("DAILY_QUOTA_ANON", "5"))
-DAILY_QUOTA_USER = int(os.getenv("DAILY_QUOTA_USER", "60"))
+
+# Pro-only (Placement Season Pass) endpoints. These are the "advanced" tools,
+# NOT the core promise — a free user can still generate a proof-backed resume,
+# match roles, and run a mock interview. We only wall off the power tools.
+#
+# Deliberately OFF by default (ENFORCE_PRO=0): the code ships inert so nothing
+# breaks for today's users. Flip ENFORCE_PRO=1 in Render the day you want the
+# wall up. Don't flip it before you have people who'd miss these features.
+PRO_PATHS = {"/quality-gate", "/evidence-quality-gate", "/skill-roadmap", "/recruiter-page"}
+ENFORCE_PRO = os.getenv("ENFORCE_PRO", "0") == "1"
+DAILY_QUOTA_ANON = int(os.getenv("DAILY_QUOTA_ANON", "5"))     # not signed in
+DAILY_QUOTA_FREE = int(os.getenv("DAILY_QUOTA_FREE", "15"))    # signed in, free
+DAILY_QUOTA_PRO = int(os.getenv("DAILY_QUOTA_PRO", "300"))     # Season Pass holder
+DAILY_QUOTA_USER = DAILY_QUOTA_FREE                            # back-compat alias
 _QUOTA = defaultdict(int)      # (identity, YYYY-MM-DD) -> count
 
 
@@ -345,6 +357,32 @@ def _quota_identity(request):
         return "u:" + auth[7:].strip(), True
     ip = request.client.host if request.client else "unknown"
     return "ip:" + ip, False
+
+
+def _plan_from_auth(auth_header):
+    """anon | free | pro — resolved from the Authorization header.
+
+    This runs on every AI request, so it's cached (2 min) behind a hash of the
+    token: one DB round-trip per user per 2 minutes, not one per request.
+    THIS is the paywall. The plan is read from the DB, which is written ONLY by
+    a signature-verified payment webhook — never by anything the browser sends.
+    """
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        return "anon"
+    ck = "authplan:" + hashlib.sha256(auth_header.encode("utf-8")).hexdigest()[:20]
+    hit = _cache_get(ck)
+    if hit:
+        return hit
+    plan = "anon"
+    try:
+        user = get_user_from_token(auth_header)
+        if user:
+            plan = _plan_for_user(user["id"])
+    except Exception as e:
+        print("plan resolve error:", str(e))
+        return "free"                      # fail open at the free tier, never 500
+    _cache_set(ck, plan, ttl=120)
+    return plan
 
 
 @app.middleware("http")
@@ -368,13 +406,30 @@ async def rate_limit_mw(request: Request, call_next):
         ident, is_user = _quota_identity(request)
         day = time.strftime("%Y-%m-%d", time.gmtime())
         key = (ident, day)
-        cap = DAILY_QUOTA_USER if is_user else DAILY_QUOTA_ANON
+        plan = _plan_from_auth(request.headers.get("authorization") or "") if is_user else "anon"
+
+        # The paywall. Server-side, plan read from the DB, DB written only by a
+        # verified webhook — so it can't be bypassed from the browser.
+        if ENFORCE_PRO and request.url.path in PRO_PATHS and plan != "pro":
+            return JSONResponse(status_code=402, content={
+                "success": False,
+                "error": ("This is a Placement Season Pass feature. "
+                          f"₹{SEASON_PASS_INR} / ${SEASON_PASS_USD} for {SEASON_PASS_MONTHS} months of Pro."),
+                "upgrade": True, "plan": plan, "pro_required": True})
+
+        cap = {"pro": DAILY_QUOTA_PRO, "free": DAILY_QUOTA_FREE}.get(plan, DAILY_QUOTA_ANON)
         if _QUOTA[key] >= cap:
-            msg = (f"You've hit today's limit of {cap} AI actions. It resets tomorrow."
-                   if is_user else
-                   f"You've used your {cap} free tries for today. Sign up free to get more.")
+            if plan == "pro":
+                msg = (f"You've hit today's fair-use limit of {cap} AI actions. "
+                       "It resets tomorrow — email us if you need more.")
+            elif plan == "free":
+                msg = (f"You've used today's {cap} free AI actions. They reset tomorrow — "
+                       "or get the Placement Season Pass for unlimited use through placement season.")
+            else:
+                msg = f"You've used your {cap} free tries for today. Sign up free to get more."
             return JSONResponse(status_code=429,
-                                content={"success": False, "error": msg, "quota_exceeded": True})
+                                content={"success": False, "error": msg, "quota_exceeded": True,
+                                         "plan": plan, "upgrade": plan != "pro"})
         _QUOTA[key] += 1
         if len(_QUOTA) > 20000:                       # cheap prune of old days
             for k in [k for k in list(_QUOTA.keys()) if k[1] != day]:
@@ -644,6 +699,38 @@ def init_db():
             data TEXT NOT NULL,
             views INTEGER NOT NULL DEFAULT 0,
             created_at REAL NOT NULL DEFAULT (strftime('%s','now'))
+        )
+        """
+    )
+    # Billing. Kept in its own table (not columns on `users`) so no migration/
+    # ALTER is ever needed on an existing database.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS subscriptions (
+            user_id      INTEGER PRIMARY KEY,
+            plan         TEXT NOT NULL DEFAULT 'free',
+            expires_at   REAL,
+            provider     TEXT,
+            provider_ref TEXT,
+            status       TEXT,
+            updated_at   REAL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payments (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id             INTEGER,
+            provider            TEXT,
+            provider_payment_id TEXT UNIQUE,
+            amount              INTEGER,
+            currency            TEXT,
+            plan                TEXT,
+            months              INTEGER,
+            status              TEXT,
+            raw                 TEXT,
+            created_at          REAL NOT NULL DEFAULT (strftime('%s','now'))
         )
         """
     )
@@ -1669,6 +1756,262 @@ def proof_resume_share(data: ProofShareRequest, authorization: Optional[str] = H
     return {"success": True, "slug": slug, "path": "/p/" + slug}
 
 
+# ============================================================
+# BILLING — the "Placement Season Pass": ₹599 / $29 for 3 months of Pro.
+#
+# Why a one-time pass and not a subscription: students are seasonal. They need
+# this hard for one placement season and then not at all. A pass matches how
+# they actually buy, has no churn to manage, no RBI e-mandate paperwork, and no
+# "cancel before it renews" anxiety — so it converts far better at this stage.
+#
+# DESIGN: provider-agnostic. Checkout is just a HOSTED PAYMENT LINK whose URL
+# lives in an env var (Razorpay Payment Link for India, a Merchant-of-Record
+# link for everyone else). To go live you paste two URLs into Render — no code
+# change, no PCI surface, no card data ever touching this server.
+#
+# THE GOLDEN RULE: entitlement is granted ONLY by a signature-verified webhook.
+# Nothing the browser sends can ever make someone Pro.
+# ============================================================
+SEASON_PASS_MONTHS = int(os.getenv("SEASON_PASS_MONTHS", "3"))
+SEASON_PASS_INR = int(os.getenv("SEASON_PASS_INR", "599"))
+SEASON_PASS_USD = int(os.getenv("SEASON_PASS_USD", "29"))
+CHECKOUT_LINK_INR = os.getenv("CHECKOUT_LINK_INR", "")   # Razorpay Payment Link
+CHECKOUT_LINK_USD = os.getenv("CHECKOUT_LINK_USD", "")   # Lemon Squeezy / Dodo / Paddle
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+LEMONSQUEEZY_WEBHOOK_SECRET = os.getenv("LEMONSQUEEZY_WEBHOOK_SECRET", "")
+ADMIN_KEY = os.getenv("ADMIN_KEY", "")
+
+
+def _plan_for_user(user_id):
+    """'pro' while a paid pass is live, else 'free'. Cached for 5 minutes."""
+    if not user_id:
+        return "free"
+    ck = "plan:%s" % user_id
+    hit = _cache_get(ck)
+    if hit:
+        return hit
+    plan = "free"
+    conn = get_db()
+    try:
+        row = db_one(conn, "SELECT plan, expires_at FROM subscriptions WHERE user_id = ?", (user_id,))
+        if row:
+            r = dict(row)
+            if r.get("plan") == "pro" and float(r.get("expires_at") or 0) > time.time():
+                plan = "pro"
+    except Exception as e:
+        print("plan lookup error:", str(e))
+    finally:
+        conn.close()
+    _cache_set(ck, plan, ttl=300)
+    return plan
+
+
+def _payment_seen(ref):
+    """Webhooks fire more than once. A payment id we've already banked must
+    never grant a second pass."""
+    if not ref:
+        return True
+    conn = get_db()
+    try:
+        return bool(db_one(conn, "SELECT id FROM payments WHERE provider_payment_id = ?", (str(ref),)))
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def _user_id_by_email(email):
+    if not email:
+        return None
+    conn = get_db()
+    try:
+        row = db_one(conn, "SELECT id FROM users WHERE email = ?", (normalize_email(email),))
+        return dict(row)["id"] if row else None
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+
+def _grant_pro(user_id, months, provider, ref, amount=0, currency="", raw=""):
+    """Give a user N months of Pro. If they already have time left, we stack on
+    top of it rather than overwriting — buying a second pass never costs them days."""
+    now = time.time()
+    base = now
+    conn = get_db()
+    try:
+        row = db_one(conn, "SELECT expires_at FROM subscriptions WHERE user_id = ?", (user_id,))
+        if row:
+            cur = float(dict(row).get("expires_at") or 0)
+            if cur > now:
+                base = cur
+        new_exp = base + (months * 30 * 24 * 3600)
+        if row:
+            db_exec(conn, "UPDATE subscriptions SET plan = 'pro', expires_at = ?, provider = ?, "
+                          "provider_ref = ?, status = 'active', updated_at = ? WHERE user_id = ?",
+                    (new_exp, provider, str(ref), now, user_id))
+        else:
+            db_exec(conn, "INSERT INTO subscriptions (user_id, plan, expires_at, provider, "
+                          "provider_ref, status, updated_at) VALUES (?, 'pro', ?, ?, ?, 'active', ?)",
+                    (user_id, new_exp, provider, str(ref), now))
+        try:
+            db_exec(conn, "INSERT INTO payments (user_id, provider, provider_payment_id, amount, "
+                          "currency, plan, months, status, raw, created_at) "
+                          "VALUES (?, ?, ?, ?, ?, 'pro', ?, 'paid', ?, ?)",
+                    (user_id, provider, str(ref), int(amount or 0), currency or "",
+                     int(months), str(raw)[:1000], now))
+        except Exception as e:
+            print("payment log (non-fatal):", str(e))
+        conn.commit()
+    finally:
+        conn.close()
+    _cache_set("plan:%s" % user_id, "pro", ttl=300)
+    return new_exp
+
+
+def _hmac_ok(secret, body, sig):
+    """Constant-time HMAC-SHA256 check. Both Razorpay and Lemon Squeezy sign the
+    RAW request body this way. No secret configured => reject, never accept."""
+    if not secret or not sig:
+        return False
+    calc = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(calc, (sig or "").strip())
+
+
+@app.get("/billing/me")
+def billing_me(authorization: Optional[str] = Header(None)):
+    """What the pricing UI reads: the user's plan, days left, and the prices."""
+    prices = {"months": SEASON_PASS_MONTHS, "price_inr": SEASON_PASS_INR,
+              "price_usd": SEASON_PASS_USD,
+              "live": bool(CHECKOUT_LINK_INR or CHECKOUT_LINK_USD)}
+    user = get_user_from_token(authorization)
+    if not user:
+        return dict({"success": True, "logged_in": False, "plan": "free", "days_left": 0}, **prices)
+    uid = user["id"]
+    plan = _plan_for_user(uid)
+    exp = 0.0
+    conn = get_db()
+    try:
+        row = db_one(conn, "SELECT expires_at FROM subscriptions WHERE user_id = ?", (uid,))
+        if row:
+            exp = float(dict(row).get("expires_at") or 0)
+    except Exception:
+        pass
+    finally:
+        conn.close()
+    days = int(max(0.0, exp - time.time()) // 86400) if plan == "pro" else 0
+    return dict({"success": True, "logged_in": True, "plan": plan,
+                 "expires_at": exp or None, "days_left": days}, **prices)
+
+
+class CheckoutRequest(BaseModel):
+    region: str = "global"          # "in" -> Razorpay (₹), anything else -> MoR ($)
+
+
+@app.post("/billing/checkout")
+def billing_checkout(data: CheckoutRequest, authorization: Optional[str] = Header(None)):
+    """Hands back a hosted checkout URL. We must know who's paying, so login is
+    required first — the webhook maps the payment back to the user by email."""
+    user = get_user_from_token(authorization)
+    if not user:
+        return {"success": False, "error": "Please log in first — we need to know which account to activate.",
+                "need_login": True}
+    india = (data.region or "").lower() in ("in", "india", "inr", "₹")
+    link = CHECKOUT_LINK_INR if india else CHECKOUT_LINK_USD
+    if not link:
+        return {"success": False,
+                "error": "Payments aren't switched on yet for this region. Email us and we'll sort you out."}
+    email = user["email"] or ""
+    q = _urlparse.quote(email)
+    sep = "&" if "?" in link else "?"
+    # Razorpay reads prefill[email]; Lemon Squeezy reads checkout[email]. Each
+    # ignores the other's param, so sending both keeps this provider-agnostic.
+    url = "%s%sprefill[email]=%s&checkout[email]=%s" % (link, sep, q, q)
+    return {"success": True, "url": url,
+            "amount": SEASON_PASS_INR if india else SEASON_PASS_USD,
+            "currency": "INR" if india else "USD", "months": SEASON_PASS_MONTHS}
+
+
+@app.post("/webhook/razorpay")
+async def webhook_razorpay(request: Request):
+    """India. Razorpay Dashboard → Settings → Webhooks → add this URL, pick
+    events payment.captured + payment_link.paid, and set RAZORPAY_WEBHOOK_SECRET
+    to the same secret you type there."""
+    body = await request.body()
+    if not _hmac_ok(RAZORPAY_WEBHOOK_SECRET, body, request.headers.get("x-razorpay-signature", "")):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "bad signature"})
+    try:
+        evt = _json.loads(body.decode("utf-8"))
+    except Exception:
+        return {"ok": True}
+    ev = evt.get("event") or ""
+    if ev not in ("payment.captured", "payment_link.paid", "order.paid"):
+        return {"ok": True}                       # not a payment we care about
+    pay = ((evt.get("payload") or {}).get("payment") or {}).get("entity") or {}
+    ref = pay.get("id") or ""
+    email = (pay.get("email") or "").strip()
+    if not ref or _payment_seen(ref):
+        return {"ok": True}                       # replay / already banked
+    uid = _user_id_by_email(email)
+    if not uid:
+        print("razorpay webhook: paid but no matching account:", email, ref)
+        return {"ok": True}                       # 200, or Razorpay retries forever
+    _grant_pro(uid, SEASON_PASS_MONTHS, "razorpay", ref,
+               pay.get("amount") or 0, pay.get("currency") or "INR", ev)
+    print("Season Pass granted (razorpay):", email)
+    return {"ok": True}
+
+
+@app.post("/webhook/lemonsqueezy")
+async def webhook_lemonsqueezy(request: Request):
+    """Rest of world, via a Merchant of Record (they handle US sales tax + EU VAT
+    so you don't need a US entity). Store → Settings → Webhooks → order_created."""
+    body = await request.body()
+    if not _hmac_ok(LEMONSQUEEZY_WEBHOOK_SECRET, body, request.headers.get("x-signature", "")):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "bad signature"})
+    try:
+        evt = _json.loads(body.decode("utf-8"))
+    except Exception:
+        return {"ok": True}
+    if ((evt.get("meta") or {}).get("event_name") or "") not in ("order_created", "subscription_payment_success"):
+        return {"ok": True}
+    data = evt.get("data") or {}
+    attrs = data.get("attributes") or {}
+    ref = str(data.get("id") or attrs.get("identifier") or "")
+    email = (attrs.get("user_email") or "").strip()
+    if not ref or _payment_seen(ref):
+        return {"ok": True}
+    uid = _user_id_by_email(email)
+    if not uid:
+        print("lemonsqueezy webhook: paid but no matching account:", email, ref)
+        return {"ok": True}
+    _grant_pro(uid, SEASON_PASS_MONTHS, "lemonsqueezy", ref,
+               attrs.get("total") or 0, attrs.get("currency") or "USD", "order_created")
+    print("Season Pass granted (lemonsqueezy):", email)
+    return {"ok": True}
+
+
+class GrantRequest(BaseModel):
+    key: str = ""
+    email: str = ""
+    months: int = 3
+
+
+@app.post("/billing/grant")
+def billing_grant(data: GrantRequest):
+    """Manually hand someone a pass. Two real uses: testing the paywall end-to-end
+    before any provider is live, and comping people — a free Season Pass for a
+    university club's officers is a very cheap way to buy goodwill. Needs ADMIN_KEY."""
+    if not ADMIN_KEY or data.key != ADMIN_KEY:
+        return {"success": False, "error": "Not authorised."}
+    uid = _user_id_by_email(data.email)
+    if not uid:
+        return {"success": False, "error": "No account with that email."}
+    months = max(1, min(24, int(data.months or SEASON_PASS_MONTHS)))
+    exp = _grant_pro(uid, months, "manual", "manual:%s:%d" % (data.email, int(time.time())))
+    return {"success": True, "email": data.email, "months": months, "expires_at": exp}
+
+
 @app.post("/account/delete")
 def delete_account(authorization: Optional[str] = Header(None)):
     """P1: full account deletion. Removes the user and every row of their data.
@@ -1689,6 +2032,8 @@ def delete_account(authorization: Optional[str] = Header(None)):
             "DELETE FROM resumes WHERE user_id = ?",
             "DELETE FROM profile_vault WHERE user_id = ?",
             "DELETE FROM shared_proofs WHERE user_id = ?",
+            "DELETE FROM subscriptions WHERE user_id = ?",
+            "DELETE FROM payments WHERE user_id = ?",
         ):
             try:
                 db_exec(conn, sql, (uid,))
@@ -3034,9 +3379,6 @@ Rules:
     if not updated:
         return {"success": False, "error": "The edit came back empty. Please rephrase your request."}
 
-    with open("latest_resume.txt", "w", encoding="utf-8") as f:
-        f.write(updated)
-
     return {
         "success": True,
         "resume": updated,
@@ -3046,15 +3388,12 @@ Rules:
 
 @app.post("/save-resume")
 def save_resume(data: SaveResumeRequest):
-    """Persist a given resume text (used by the Undo button so the
-    downloadable PDF matches what's shown on screen)."""
-    text = (data.resume or "").strip()
-    if not text:
-        return {"success": False, "error": "Nothing to save."}
+    """No-op, kept so older clients don't break.
 
-    with open("latest_resume.txt", "w", encoding="utf-8") as f:
-        f.write(text)
-
+    This used to write the resume to a process-wide latest_resume.txt, which the
+    download endpoints then read back — meaning whoever downloaded next got the
+    LAST person's resume. The browser now holds the text and posts it with each
+    download, so there is nothing to save here."""
     return {"success": True}
 
 
@@ -3233,30 +3572,14 @@ def build_cover_pdf(basename, text, name, email, phone, location):
     return pdf_file
 
 
-def _resume_context():
-    if not os.path.exists("latest_resume.txt"):
-        return None
-    with open("latest_resume.txt", "r", encoding="utf-8") as f:
-        resume_text = f.read()
+def _resume_context(resume_text, name="", email="", phone="", location=""):
+    """Build the substitution context for the HTML templates.
 
-    name = "Candidate Name"
-    email = "your.email@example.com"
-    phone = "+91 XXXXX XXXXX"
-    location = "Your City, India"
-
-    if os.path.exists("latest_contact.txt"):
-        with open("latest_contact.txt", "r", encoding="utf-8") as f:
-            cl = f.read().splitlines()
-        if len(cl) > 0 and cl[0]:
-            name = cl[0]
-        if len(cl) > 1 and cl[1]:
-            email = cl[1]
-        if len(cl) > 2 and cl[2]:
-            phone = cl[2]
-        if len(cl) > 3 and cl[3]:
-            location = cl[3]
-
-    s = split_resume_sections(resume_text)
+    Everything is passed in. This used to read the process-wide
+    latest_resume.txt / latest_contact.txt, which is exactly how one user's
+    details ended up in another user's download."""
+    name, email, phone, location = _contact_or_default(name, email, phone, location)
+    s = split_resume_sections(resume_text or "")
     initials = "".join([w[0] for w in name.split()[:2]]).upper() or "CV"
 
     return {
@@ -3472,27 +3795,17 @@ TEMPLATES = {
 
 @app.get("/download-template/{template}")
 def download_template(template: str):
-    if template not in TEMPLATES and template != "professional":
-        return {"success": False, "error": "Unknown template."}
-    if not os.path.exists("latest_resume.txt"):
-        return {"success": False, "error": "No resume generated yet."}
-    with open("latest_resume.txt", "r", encoding="utf-8") as f:
-        resume_text = f.read()
-    name, email, phone, location = _contact_or_default()
-    if os.path.exists("latest_contact.txt"):
-        with open("latest_contact.txt", "r", encoding="utf-8") as f:
-            cl = f.read().splitlines()
-        name = cl[0] if len(cl) > 0 and cl[0] else name
-        email = cl[1] if len(cl) > 1 and cl[1] else email
-        phone = cl[2] if len(cl) > 2 and cl[2] else phone
-        location = cl[3] if len(cl) > 3 and cl[3] else location
+    """REMOVED — this was a cross-user data leak.
 
-    pdf_file = build_resume_pdf(f"resume_{template}", resume_text, name, email, phone, location, template=template)
-    return FileResponse(
-        pdf_file,
-        media_type="application/pdf",
-        filename=f"ResumeForge_{template}.pdf"
-    )
+    It served whatever was in the process-wide latest_resume.txt, so ANY caller
+    (no login required) got back the most recently generated user's resume,
+    including their name, email and phone. Use POST /download-resume-pdf, which
+    carries the resume and contact details in the request body.
+    """
+    return JSONResponse(status_code=410, content={
+        "success": False,
+        "error": "This endpoint has been removed. Use POST /download-resume-pdf instead.",
+    })
 
 
 class ResumePDFRequest(BaseModel):
@@ -3505,12 +3818,44 @@ class ResumePDFRequest(BaseModel):
     role: str = ""
 
 
+# ---------------------------------------------------------------------------
+# HTML -> PDF via WeasyPrint.
+#
+# The six template thumbnails on the site were rendered from the HTML templates
+# below (TEMPLATE_SLATE etc). When Chromium was removed for OOM-killing Render's
+# 512MB tier, downloads were repointed at build_resume_pdf() — which has ONE
+# layout and just swaps the accent colour. So users picked "Slate" or "Photo"
+# and got the same PDF in a different shade. This closes that gap by rendering
+# the original HTML again, with an engine that actually fits in 512MB:
+# WeasyPrint is pure Python + Pango/Cairo, no browser, a fraction of the memory.
+#
+# It degrades safely: if WeasyPrint isn't installed or a template blows up, we
+# fall back to the reportlab PDF rather than 500ing at the user.
+# ---------------------------------------------------------------------------
+try:
+    from weasyprint import HTML as _WeasyHTML
+except Exception as _e:                       # not installed / missing system libs
+    _WeasyHTML = None
+    print("WeasyPrint unavailable, falling back to reportlab PDFs:", str(_e))
+
+
+def render_template_pdf(basename, template, resume_text, name, email, phone, location):
+    """Render one of the HTML templates to a PDF. Returns a file path, or None
+    if this isn't renderable (caller should fall back to reportlab)."""
+    tpl = TEMPLATES.get((template or "").lower())
+    if _WeasyHTML is None or not tpl:
+        return None                            # 'professional' has no HTML template
+    ctx = _resume_context(resume_text, name, email, phone, location)
+    html_doc = _fill(tpl, ctx)
+    pdf_file = f"{basename}_{secrets.token_hex(6)}.pdf"
+    _WeasyHTML(string=html_doc).write_pdf(pdf_file)
+    return pdf_file
+
+
 @app.post("/download-resume-pdf")
 def download_resume_pdf(data: ResumePDFRequest):
-    """Render a chosen template (or the 'professional' design) to a PDF using
-    the resume + contact carried IN THE REQUEST. This is the collision-safe
-    replacement for GET /download-template/{t} and /download-professional-pdf,
-    which both read the shared latest_resume.txt / latest_contact.txt files."""
+    """Render a chosen template to a PDF from the resume + contact carried IN
+    THE REQUEST BODY (never from shared server-side files)."""
     resume = (data.resume or "").strip()
     if not resume:
         return {"success": False, "error": "No resume generated yet."}
@@ -3525,7 +3870,18 @@ def download_resume_pdf(data: ResumePDFRequest):
         filename = (_professional_filename(name, data.role)
                     if data.role else f"ResumeForge_{tmpl}.pdf")
 
-    pdf_file = build_resume_pdf(f"resume_{tmpl}", resume, name, email, phone, location, template=tmpl)
+    # Preferred path: the real HTML template, so the PDF matches the thumbnail.
+    pdf_file = None
+    try:
+        pdf_file = render_template_pdf(f"resume_{tmpl}", tmpl, resume, name, email, phone, location)
+    except Exception as e:
+        print("WeasyPrint render failed (%s), using reportlab:" % tmpl, str(e))
+
+    # Fallback: 'professional' (deliberately single-column and ATS-safe), or any
+    # template that failed to render. An ugly PDF beats a 500.
+    if not pdf_file:
+        pdf_file = build_resume_pdf(f"resume_{tmpl}", resume, name, email, phone, location, template=tmpl)
+
     return FileResponse(pdf_file, media_type="application/pdf", filename=filename)
 
 
@@ -3994,8 +4350,9 @@ Return ONLY valid JSON (no markdown fences, no commentary) in EXACTLY this shape
     if not parsed or not parsed.get("tailored_resume"):
         return {"success": False, "error": "Could not tailor the resume. Please try again."}
 
-    with open("tailored_resume.txt", "w", encoding="utf-8") as f:
-        f.write(clean_resume_markdown(parsed["tailored_resume"]))
+    # Not persisted to a shared tailored_resume.txt any more — that file was
+    # process-wide, so the next person to hit a download endpoint got THIS
+    # user's tailored resume. The browser keeps the text and posts it back.
 
     parsed["success"] = True
     return parsed
@@ -4009,38 +4366,16 @@ def _professional_filename(name, role):
 
 @app.get("/download-tailored/{template}")
 def download_tailored(template: str, role: str = ""):
-    if not os.path.exists("tailored_resume.txt"):
-        return {"success": False, "error": "No tailored resume yet. Tailor one first."}
+    """REMOVED — cross-user data leak.
 
-    with open("tailored_resume.txt", "r", encoding="utf-8") as f:
-        resume_text = f.read()
-
-    name = "Candidate Name"
-    email = "your.email@example.com"
-    phone = "+91 XXXXX XXXXX"
-    location = "Your City, India"
-    if os.path.exists("latest_contact.txt"):
-        with open("latest_contact.txt", "r", encoding="utf-8") as f:
-            cl = f.read().splitlines()
-        if len(cl) > 0 and cl[0]:
-            name = cl[0]
-        if len(cl) > 1 and cl[1]:
-            email = cl[1]
-        if len(cl) > 2 and cl[2]:
-            phone = cl[2]
-        if len(cl) > 3 and cl[3]:
-            location = cl[3]
-
-    if template not in TEMPLATES and template != "professional":
-        return {"success": False, "error": "Unknown template."}
-
-    pdf_file = build_resume_pdf(f"tailored_{template}", resume_text, name, email, phone, location, template=template)
-
-    return FileResponse(
-        pdf_file,
-        media_type="application/pdf",
-        filename=_professional_filename(name, role)
-    )
+    Read the process-wide tailored_resume.txt + latest_contact.txt, so any
+    anonymous caller got the last user's tailored resume and contact details.
+    Use POST /download-resume-pdf, which carries the data in the request body.
+    """
+    return JSONResponse(status_code=410, content={
+        "success": False,
+        "error": "This endpoint has been removed. Use POST /download-resume-pdf instead.",
+    })
 
 
 class RenderRequest(BaseModel):
@@ -4061,21 +4396,12 @@ def render_resume(data: RenderRequest):
     if not resume:
         return {"success": False, "error": "No resume to render."}
 
-    # Contact comes from the request body (collision-safe). Falls back to the
-    # shared file only when the body omits everything (legacy callers).
+    # Contact comes from the request body, full stop. This used to fall back to
+    # a process-wide latest_contact.txt, which could stamp ANOTHER user's name,
+    # email and phone onto this person's document. Blank placeholders are fine;
+    # someone else's phone number is not.
     name, email, phone, location = _contact_or_default(
         data.name, data.email, data.phone, data.location)
-    if not (data.email or data.phone or data.location) and os.path.exists("latest_contact.txt"):
-        with open("latest_contact.txt", "r", encoding="utf-8") as f:
-            cl = f.read().splitlines()
-        if len(cl) > 0 and cl[0]:
-            name = cl[0]
-        if len(cl) > 1 and cl[1]:
-            email = cl[1]
-        if len(cl) > 2 and cl[2]:
-            phone = cl[2]
-        if len(cl) > 3 and cl[3]:
-            location = cl[3]
 
     pdf_file = build_resume_pdf("render_app", resume, name, email, phone, location,
                                 template=data.template or "classic")
@@ -4227,21 +4553,11 @@ def download_cover_letter(data: CoverLetterPDFRequest):
     if not text:
         return {"success": False, "error": "No cover letter to download."}
 
-    # Contact from the request body (collision-safe); fall back to the shared
-    # file only if the caller sent no contact details at all.
+    # Contact from the request body only — never from a shared file. See the
+    # note in /render-resume: the old fallback could print someone else's
+    # contact details on this user's cover letter.
     name, email, phone, location = _contact_or_default(
         data.name, data.email, data.phone, data.location)
-    if not (data.email or data.phone or data.location) and os.path.exists("latest_contact.txt"):
-        with open("latest_contact.txt", "r", encoding="utf-8") as f:
-            cl = f.read().splitlines()
-        if len(cl) > 0 and cl[0]:
-            name = cl[0]
-        if len(cl) > 1 and cl[1]:
-            email = cl[1]
-        if len(cl) > 2 and cl[2]:
-            phone = cl[2]
-        if len(cl) > 3 and cl[3]:
-            location = cl[3]
 
     pdf_file = build_cover_pdf("cover_letter", text, name, email, phone, location)
     return FileResponse(pdf_file, media_type="application/pdf", filename="Cover_Letter.pdf")
@@ -4541,14 +4857,11 @@ One-page completeness rule:
 
         cleaned_resume = clean_resume_markdown(response.text)
 
-        with open("latest_resume.txt", "w", encoding="utf-8") as f:
-            f.write(cleaned_resume)
-
-        with open("latest_contact.txt", "w", encoding="utf-8") as f:
-            f.write(f"{candidate_name}\n")
-            f.write(f"{data.email}\n")
-            f.write(f"{data.phone}\n")
-            f.write(f"{data.location}\n")
+        # NOTE: we deliberately do NOT persist this to latest_resume.txt /
+        # latest_contact.txt any more. Those were process-wide shared files, so
+        # with two people using the site at once, user B could be served user A's
+        # resume, name, email and phone. Every download path now carries its own
+        # data in the request body instead. Do not reintroduce these files.
 
         return {
             "success": True,
@@ -5235,24 +5548,13 @@ li {{
 
 @app.get("/download-professional-pdf")
 def download_professional_pdf():
-    """Back-compat GET that reads the shared latest_resume.txt / latest_contact.txt.
-    Prefer POST /download-resume-pdf with template='professional', which carries
-    the data in the request body and is therefore safe for concurrent users."""
-    if not os.path.exists("latest_resume.txt"):
-        return {"success": False, "error": "No resume generated yet."}
+    """REMOVED — same cross-user data leak as /download-template/{t}.
 
-    with open("latest_resume.txt", "r", encoding="utf-8") as f:
-        resume_text = f.read()
-
-    name, email, phone, location = _contact_or_default()
-    if os.path.exists("latest_contact.txt"):
-        with open("latest_contact.txt", "r", encoding="utf-8") as f:
-            cl = f.read().splitlines()
-        name = cl[0] if len(cl) > 0 and cl[0] else name
-        email = cl[1] if len(cl) > 1 and cl[1] else email
-        phone = cl[2] if len(cl) > 2 and cl[2] else phone
-        location = cl[3] if len(cl) > 3 and cl[3] else location
-
-    pdf_file = build_resume_pdf("professional_resume", resume_text, name, email, phone, location, template="professional")
-    return FileResponse(pdf_file, media_type="application/pdf",
-                        filename="ResumeForge_Professional_Template.pdf")
+    It read the process-wide latest_resume.txt / latest_contact.txt, so any
+    anonymous caller received the last user's resume and contact details.
+    Use POST /download-resume-pdf with template='professional'.
+    """
+    return JSONResponse(status_code=410, content={
+        "success": False,
+        "error": "This endpoint has been removed. Use POST /download-resume-pdf instead.",
+    })

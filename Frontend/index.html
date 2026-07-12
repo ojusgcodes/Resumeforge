@@ -2205,6 +2205,7 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
             <div class="nav-menu-wrap">
                 <button class="nav-track-btn nav-menu-trigger" id="navMenuBtn" aria-haspopup="true" aria-expanded="false" title="Menu">☰ Menu</button>
                 <div class="nav-menu-dropdown" id="navMenuDropdown">
+                    <button class="nav-track-btn" id="navUpgradeBtn" title="Placement Season Pass — 3 months of Pro">⭐ Placement Season Pass</button>
                     <button class="nav-track-btn" id="navResumesBtn" title="My Resumes">📄 My Resumes</button>
                     <button class="nav-track-btn" data-go="proof" title="Proof &amp; Prep">🔬 Proof &amp; Prep</button>
                     <button class="nav-track-btn" data-go="interview" title="Interview Prep">🎤 Interview Prep</button>
@@ -2220,6 +2221,7 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
             <button class="signup-btn" id="signupBtn">Sign Up</button>
             <div class="user-greeting" id="userArea" style="display:none;">
                 <span>Hi, <strong id="userName"></strong></span>
+                <span class="plan-badge" id="planBadge" style="display:none;" title="Placement Season Pass">PRO</span>
                 <button class="login-btn" id="logoutBtn" style="margin-left:4px;">Logout</button>
             </div>
         </div>
@@ -2810,12 +2812,12 @@ document.getElementById("result").innerHTML = `
         <p>Pick a design below — your resume downloads as a PDF in that template.</p>
 
         <div class="template-gallery" id="templateGallery">
-            <div class="tpl-card" data-template="slate"><img src="templates/thumb_slate.png" alt="Slate Header template"><span>Slate Header</span></div>
-            <div class="tpl-card" data-template="photo"><img src="templates/thumb_photo.png" alt="Photo Sidebar template"><span>Photo Header</span></div>
-            <div class="tpl-card" data-template="green"><img src="templates/thumb_green.png" alt="Green Accent template"><span>Green Accent</span></div>
-            <div class="tpl-card" data-template="classic"><img src="templates/thumb_classic.png" alt="Classic Centered template"><span>Classic</span></div>
-            <div class="tpl-card" data-template="mauve"><img src="templates/thumb_mauve.png" alt="Mauve Elegant template"><span>Mauve Elegant</span></div>
-            <div class="tpl-card" data-template="professional"><img src="templates/thumb_professional.png" alt="Professional template"><span>Professional</span></div>
+            <div class="tpl-card" data-template="slate"><img src="templates/thumb_slate.png" alt="Slate colour resume template"><span>Slate</span></div>
+            <div class="tpl-card" data-template="photo"><img src="templates/thumb_photo.png" alt="Steel blue resume template"><span>Steel Blue</span></div>
+            <div class="tpl-card" data-template="green"><img src="templates/thumb_green.png" alt="Forest green resume template"><span>Forest Green</span></div>
+            <div class="tpl-card" data-template="classic"><img src="templates/thumb_classic.png" alt="Classic grey resume template"><span>Classic Grey</span></div>
+            <div class="tpl-card" data-template="mauve"><img src="templates/thumb_mauve.png" alt="Plum resume template"><span>Plum</span></div>
+            <div class="tpl-card" data-template="professional"><img src="templates/thumb_professional.png" alt="Professional neutral resume template"><span>Professional</span></div>
         </div>
 
         <button id="copyResumeBtn" class="pdf-btn copy-btn" style="margin-top:14px;">
@@ -4201,6 +4203,8 @@ updateTrackerCount();
             localStorage.setItem("rf_name", name || "");
             localStorage.setItem("rf_email", email || "");
         } catch (e) {}
+        // Pull the user's plan so the PRO badge appears right after login.
+        try { if (window.rfRefreshPlan) window.rfRefreshPlan(); } catch (e) {}
     }
     function clearSession() {
         try {
@@ -4208,6 +4212,7 @@ updateTrackerCount();
             localStorage.removeItem("rf_name");
             localStorage.removeItem("rf_email");
         } catch (e) {}
+        try { if (window.rfRefreshPlan) window.rfRefreshPlan(); } catch (e) {}
     }
 
     async function postJSON(path, body) {
@@ -6380,6 +6385,229 @@ body.dark-mode .li-steps li, body.dark-mode .li-drop{ background:#221f18; border
       imgCount.textContent = n ? ("✅ " + n + " screenshot" + (n > 1 ? "s" : "") + " selected") : "";
     });
   }
+})();
+</script>
+
+<!-- ============================================================
+     PLACEMENT SEASON PASS — pricing / upgrade panel
+     Students are seasonal: they need this hard for one placement season and
+     then not at all. So we sell a 3-month pass, not a subscription — no churn,
+     no "cancel before it renews" anxiety, matches how they actually buy.
+     ============================================================ -->
+<style>
+  .plan-badge{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;
+    background:linear-gradient(135deg,#9a3b1c,#c9622e);color:#fff;font-size:11px;
+    font-weight:800;letter-spacing:.5px;vertical-align:middle;}
+  .pay-overlay{position:fixed;inset:0;z-index:12000;display:none;background:rgba(30,18,12,.55);
+    backdrop-filter:blur(3px);overflow-y:auto;padding:28px 16px;}
+  .pay-overlay.open{display:block;}
+  .pay-box{max-width:860px;margin:0 auto;background:var(--card-bg,#fffaf3);border:1px solid rgba(154,59,28,.18);
+    border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.28);padding:26px 26px 30px;position:relative;}
+  .pay-close{position:absolute;top:12px;right:14px;background:none;border:none;font-size:24px;
+    cursor:pointer;color:#8a7a6d;line-height:1;}
+  .pay-close:hover{color:var(--accent,#9a3b1c);}
+  .pay-kicker{font-size:12px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;
+    color:var(--accent,#9a3b1c);margin-bottom:6px;}
+  .pay-title{font-size:27px;font-weight:800;margin:0 0 6px;color:var(--text,#2c1e16);}
+  .pay-sub{color:#7a6a5d;margin:0 0 14px;font-size:15px;line-height:1.5;}
+  .pay-note{background:#fff3e6;border:1px solid rgba(154,59,28,.25);color:#7a3b18;
+    border-radius:10px;padding:10px 13px;font-size:14px;margin-bottom:16px;display:none;}
+  .pay-status{background:#eaf7ee;border:1px solid #b7e0c3;color:#1f6b39;border-radius:10px;
+    padding:10px 13px;font-size:14px;margin-bottom:16px;display:none;font-weight:600;}
+  .pay-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0 6px;}
+  @media(max-width:640px){.pay-grid{grid-template-columns:1fr;}}
+  .pay-card{border:2px solid rgba(154,59,28,.18);border-radius:14px;padding:18px;background:#fff;
+    text-align:center;transition:.16s;}
+  .pay-card:hover{border-color:var(--accent,#9a3b1c);transform:translateY(-2px);
+    box-shadow:0 10px 26px rgba(154,59,28,.14);}
+  .pay-region{font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#9b8a7c;}
+  .pay-price{font-size:36px;font-weight:800;color:var(--text,#2c1e16);margin:6px 0 0;}
+  .pay-per{font-size:13px;color:#8a7a6d;margin-bottom:14px;}
+  .pay-btn{width:100%;padding:12px 16px;border:none;border-radius:10px;cursor:pointer;
+    background:var(--accent,#9a3b1c);color:#fff;font-weight:700;font-size:15px;transition:.16s;}
+  .pay-btn:hover{filter:brightness(1.08);} .pay-btn:disabled{opacity:.6;cursor:default;}
+  .pay-btn.ghost{background:#fff;color:var(--accent,#9a3b1c);border:2px solid var(--accent,#9a3b1c);}
+  .pay-cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:22px;}
+  @media(max-width:640px){.pay-cols{grid-template-columns:1fr;}}
+  .pay-cols h4{margin:0 0 8px;font-size:14px;letter-spacing:.4px;text-transform:uppercase;color:#9b8a7c;}
+  .pay-list{list-style:none;padding:0;margin:0;}
+  .pay-list li{padding:5px 0 5px 24px;position:relative;font-size:14.5px;color:var(--text,#3a2a20);line-height:1.45;}
+  .pay-list li:before{content:"✓";position:absolute;left:0;color:#2f8f4e;font-weight:800;}
+  .pay-fine{margin-top:18px;font-size:12.5px;color:#9b8a7c;line-height:1.6;text-align:center;}
+  .pay-err{color:#b3261e;font-size:14px;margin-top:12px;text-align:center;display:none;}
+</style>
+<div class="pay-overlay" id="payOverlay" role="dialog" aria-modal="true" aria-labelledby="payTitle">
+  <div class="pay-box">
+    <button class="pay-close" id="payClose" aria-label="Close">×</button>
+    <div class="pay-kicker">Placement Season Pass</div>
+    <h2 class="pay-title" id="payTitle">Everything unlocked, for one placement season.</h2>
+    <p class="pay-sub">You don't need a resume tool forever — you need it <em>now</em>, while you're
+      applying. So this isn't a subscription. Pay once, get <strong id="payMonths">3 months</strong> of
+      Pro, and it ends by itself. Nothing to cancel.</p>
+
+    <div class="pay-note" id="payNote"></div>
+    <div class="pay-status" id="payStatus"></div>
+
+    <div class="pay-grid" id="payGrid">
+      <div class="pay-card">
+        <div class="pay-region">🇮🇳 India</div>
+        <div class="pay-price" id="payPriceInr">₹599</div>
+        <div class="pay-per">one-time · UPI, cards, netbanking</div>
+        <button class="pay-btn" data-region="in">Get the Season Pass</button>
+      </div>
+      <div class="pay-card">
+        <div class="pay-region">🌍 Rest of the world</div>
+        <div class="pay-price" id="payPriceUsd">$29</div>
+        <div class="pay-per">one-time · card, Apple&nbsp;Pay, PayPal</div>
+        <button class="pay-btn ghost" data-region="global">Get the Season Pass</button>
+      </div>
+    </div>
+    <div class="pay-err" id="payErr"></div>
+
+    <div class="pay-cols">
+      <div>
+        <h4>Free, forever</h4>
+        <ul class="pay-list">
+          <li>Proof-backed resume generation</li>
+          <li>Role matching &amp; job search</li>
+          <li>Career Evidence Vault</li>
+          <li>Mock interview + feedback</li>
+          <li>A few AI actions a day</li>
+        </ul>
+      </div>
+      <div>
+        <h4>With the Season Pass</h4>
+        <ul class="pay-list">
+          <li><strong>Unlimited</strong> AI actions — tailor a resume for every single job</li>
+          <li><strong>Should I apply?</strong> — an evidence-backed verdict before you burn an application</li>
+          <li><strong>Skill roadmap</strong> — the exact proof to build for the role you want</li>
+          <li><strong>Recruiter page</strong> — a targeted proof link per company</li>
+          <li>Priority AI (a stronger model on paid requests)</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="pay-fine">One-time payment. No auto-renewal, no card stored with us.<br>
+      Payments are handled by our payment provider — your card never touches our servers.</p>
+  </div>
+</div>
+
+<script>
+/* Placement Season Pass — plan badge, checkout, and the paywall UX.
+   Entitlement is decided server-side from a signature-verified payment webhook;
+   this file only *reflects* the plan, it can never grant it. */
+(function () {
+  var API = (function () {
+    try { return (typeof API_BASE !== "undefined" && API_BASE) ? API_BASE : ""; } catch (e) { return ""; }
+  })();
+  function tok() { try { return localStorage.getItem("rf_token"); } catch (e) { return null; } }
+
+  var overlay = document.getElementById("payOverlay");
+  var noteEl = document.getElementById("payNote");
+  var statusEl = document.getElementById("payStatus");
+  var errEl = document.getElementById("payErr");
+  var gridEl = document.getElementById("payGrid");
+  var badge = document.getElementById("planBadge");
+  if (!overlay) return;
+
+  var plan = null;   // cached /billing/me
+
+  function open(reason) {
+    errEl.style.display = "none";
+    if (reason) { noteEl.textContent = reason; noteEl.style.display = "block"; }
+    else { noteEl.style.display = "none"; }
+    overlay.classList.add("open");
+    document.body.style.overflow = "hidden";
+    refresh();
+    try { fetch(API + "/track", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event: "pricing_viewed", path: location.pathname }) }); } catch (e) {}
+  }
+  function close() { overlay.classList.remove("open"); document.body.style.overflow = ""; }
+
+  function paint(d) {
+    plan = d || {};
+    if (d && d.months) document.getElementById("payMonths").textContent = d.months + " months";
+    if (d && d.price_inr) document.getElementById("payPriceInr").textContent = "₹" + d.price_inr;
+    if (d && d.price_usd) document.getElementById("payPriceUsd").textContent = "$" + d.price_usd;
+
+    var isPro = d && d.plan === "pro";
+    if (badge) badge.style.display = isPro ? "inline-block" : "none";
+    if (isPro && badge) badge.textContent = d.days_left ? ("PRO · " + d.days_left + "d") : "PRO";
+
+    if (isPro) {
+      statusEl.textContent = "✅ Your Season Pass is active — " + (d.days_left || 0) +
+        " days left. Everything below is unlocked.";
+      statusEl.style.display = "block";
+      gridEl.style.opacity = ".45";
+    } else {
+      statusEl.style.display = "none";
+      gridEl.style.opacity = "1";
+    }
+  }
+
+  function refresh() {
+    var t = tok();
+    if (!t) { paint(null); return; }
+    fetch(API + "/billing/me", { headers: { "Authorization": "Bearer " + t } })
+      .then(function (r) { return r.json(); }).then(paint).catch(function () {});
+  }
+
+  // --- checkout -----------------------------------------------------------
+  overlay.addEventListener("click", function (e) {
+    if (e.target === overlay) { close(); return; }
+    var b = e.target.closest ? e.target.closest("[data-region]") : null;
+    if (!b) return;
+    if (!tok()) {
+      errEl.textContent = "Please log in first — we need to know which account to activate.";
+      errEl.style.display = "block";
+      return;
+    }
+    var old = b.textContent;
+    b.disabled = true; b.textContent = "Opening checkout…";
+    errEl.style.display = "none";
+    fetch(API + "/billing/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tok() },
+      body: JSON.stringify({ region: b.getAttribute("data-region") })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      b.disabled = false; b.textContent = old;
+      if (d && d.success && d.url) { window.location.href = d.url; return; }
+      errEl.textContent = (d && d.error) || "Couldn't open checkout. Please try again.";
+      errEl.style.display = "block";
+    }).catch(function () {
+      b.disabled = false; b.textContent = old;
+      errEl.textContent = "Network error. Please try again.";
+      errEl.style.display = "block";
+    });
+  });
+  document.getElementById("payClose").addEventListener("click", close);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && overlay.classList.contains("open")) close();
+  });
+
+  var navBtn = document.getElementById("navUpgradeBtn");
+  if (navBtn) navBtn.addEventListener("click", function () { open(""); });
+  if (badge) badge.addEventListener("click", function () { open(""); });
+
+  // --- the paywall UX -----------------------------------------------------
+  // Any endpoint that answers 402 (Pro-only) or 429 (out of free AI actions)
+  // now opens the pass panel with the server's own message. Wrapping fetch once
+  // means every existing call site gets this for free — no other code changes.
+  var _fetch = window.fetch;
+  window.fetch = function () {
+    return _fetch.apply(this, arguments).then(function (res) {
+      if (res.status === 402 || res.status === 429) {
+        res.clone().json().then(function (j) {
+          if (j && j.upgrade) open(j.error || "");
+        }).catch(function () {});
+      }
+      return res;               // untouched: the original caller reads it as before
+    });
+  };
+
+  window.openPay = open;
+  window.rfRefreshPlan = refresh;
+  refresh();
 })();
 </script>
 </body>
