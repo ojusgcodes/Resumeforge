@@ -2368,6 +2368,23 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
             <span class="gen-topbar-brand">ResumeForge</span>
         </div>
 
+        <!-- Step progress. Five steps; the bar is the only thing that persists
+             across them, so the user always knows where they are and what's left. -->
+        <div class="rf-progress" id="rfProgress">
+            <div class="rf-dashes">
+                <span class="rf-dash" data-s="1" title="Your details"></span>
+                <span class="rf-dash" data-s="2" title="Your resume"></span>
+                <span class="rf-dash" data-s="3" title="Prove it"></span>
+                <span class="rf-dash" data-s="4" title="Download"></span>
+                <span class="rf-dash" data-s="5" title="Apply to jobs"></span>
+            </div>
+            <div class="rf-progress-label">
+                <b id="rfStepNum">Step 1 of 5</b><span id="rfStepName">Your details</span>
+            </div>
+        </div>
+
+        <div class="rf-pane" data-pane="1">
+
         <h2>Generate Your Resume</h2>
 
         <p>
@@ -2455,9 +2472,14 @@ body.dark-mode .auth-overlay { background: rgba(0,0,0,.6) !important; }
             <button id="generateBtn" class="generate-btn">
                 Generate Resume
             </button>
-            <div id="result"></div>
 
         </div>
+        </div><!-- /pane 1 — the form -->
+
+        <!-- Steps 2-5 get injected here after a successful generate. Loading and
+             error messages land here too, and they're not .rf-pane, so they stay
+             visible on step 1 where the user can act on them. -->
+        <div id="result"></div>
 
     </section>
     <script>
@@ -2697,11 +2719,19 @@ if (!data.resume) {
                 btn.disabled = false;
                 btn.innerHTML = "🚀 Generate Resume";
 document.getElementById("result").innerHTML = `
-    <div class="result-layout">
-    <div class="result-main">
+    <!-- Steps 2-5. CSS shows exactly one pane at a time (body.rf-s2 … rf-s5), so
+         the order of the panes in this template does NOT have to match the order
+         the user walks through them. Nothing here was deleted — it was all on one
+         very long page before, which is what made it feel crowded. -->
 
-    <div class="primary-actions fade-in">
-        <h3 class="primary-actions-title">✅ Your resume is ready — pick your next move</h3>
+    <!-- ================= STEP 3 — Prove it ================= -->
+    <div class="rf-pane" data-pane="3">
+
+    <div class="primary-actions rf-card-hero fade-in">
+        <div class="rf-card-tag rf-card-tag--hero">The thing nobody else does</div>
+        <h3 class="primary-actions-title">Make your resume impossible to doubt</h3>
+        <p class="rf-hero-lede">A normal resume asks a recruiter to take your word for it.
+           This one doesn't.</p>
 
         <button id="openPbrBtn" class="pbr-btn pbr-big">🏆 Build My Proof-Backed Resume →</button>
         <p class="pbr-big-sub">Every line links to the exact proof behind it — share one link recruiters can verify.</p>
@@ -2716,6 +2746,15 @@ document.getElementById("result").innerHTML = `
             </div>
         </div>
     </div>
+
+    <div class="rf-nav">
+        <button class="rf-nav-btn" data-goto="2">← Back to my resume</button>
+        <button class="rf-nav-btn rf-nav-primary" data-goto="4">Next: download it →</button>
+    </div>
+    </div><!-- /pane 3 -->
+
+    <!-- ================= STEP 2 — Your resume ================= -->
+    <div class="rf-pane" data-pane="2">
 
     <div class="github-analysis fade-in">
 
@@ -2762,9 +2801,15 @@ document.getElementById("result").innerHTML = `
         </div>
 
     </div>
-    </div>
 
-    <div class="result-tools">
+    <div class="rf-nav">
+        <button class="rf-nav-btn" data-goto="1">← Edit my details</button>
+        <button class="rf-nav-btn rf-nav-primary" data-goto="3">Next: prove it →</button>
+    </div>
+    </div><!-- /pane 2 -->
+
+    <!-- ================= STEP 5 — Apply to jobs ================= -->
+    <div class="rf-pane" data-pane="5">
 
     <div class="role-match-banner fade-in">
         <h3>🎯 Roles You Can Apply For</h3>
@@ -2790,11 +2835,11 @@ document.getElementById("result").innerHTML = `
         <div class="apps-controls">
             <label class="apps-tpl-label">Template:
                 <select id="appsTemplate">
-                    <option value="classic">Classic</option>
-                    <option value="slate">Slate Header</option>
-                    <option value="photo">Photo Header</option>
-                    <option value="green">Green Accent</option>
-                    <option value="mauve">Mauve Elegant</option>
+                    <option value="classic">Classic Grey</option>
+                    <option value="slate">Slate</option>
+                    <option value="photo">Steel Blue</option>
+                    <option value="green">Forest Green</option>
+                    <option value="mauve">Plum</option>
                 </select>
             </label>
             <button id="genAppsBtn" class="pdf-btn">✨ Generate tailored resumes</button>
@@ -2805,11 +2850,23 @@ document.getElementById("result").innerHTML = `
         <div id="autoApplyQueue" style="display:none;"></div>
     </div>
 
-    <div class="preview-banner fade-in">
+    <div class="rf-nav">
+        <button class="rf-nav-btn" data-goto="4">← Back to downloads</button>
+    </div>
+    </div><!-- /pane 5 -->
 
-        <h3>📄 Choose a Template</h3>
+    <!-- ================= STEP 4 — Download &amp; create more ================= -->
+    <div class="rf-pane" data-pane="4">
 
-        <p>Pick a design below — your resume downloads as a PDF in that template.</p>
+    <div class="preview-banner rf-card-plain fade-in">
+
+        <div class="rf-card-tag">Standard resume</div>
+        <h3>⬇️ Download your base resume</h3>
+
+        <p>This is your normal, ATS-safe resume — the one you attach to an application form.
+           Pick a colour below and it downloads as a PDF.
+           <span class="rf-card-note">Want the version where every line links to its proof?
+           That's the <b>Proof-Backed Resume</b>, back on step 3.</span></p>
 
         <div class="template-gallery" id="templateGallery">
             <div class="tpl-card" data-template="slate"><img src="templates/thumb_slate.png" alt="Slate colour resume template"><span>Slate</span></div>
@@ -2849,12 +2906,18 @@ document.getElementById("result").innerHTML = `
         <div id="cvResult"></div>
     </div>
 
+    <div class="rf-nav">
+        <button class="rf-nav-btn" data-goto="3">← Back to proof</button>
+        <button class="rf-nav-btn rf-nav-primary" data-goto="5">Next: apply to jobs →</button>
     </div>
-    </div>
+    </div><!-- /pane 4 -->
 `;
 
 // Hand the freshly generated resume to the chat editor + the Canva-style editor
 window.__resumeText = data.resume;
+
+// The resume exists now, so unlock the rest of the flow and move the user to it.
+if (window.rfGoStep) window.rfGoStep(2);
 window.__resumeMeta = { email: email, phone: phone, location: location, company: company, role: role };
 // Stash data for AI role matching (Step 1)
 window.__matchData = {
@@ -6385,6 +6448,119 @@ body.dark-mode .li-steps li, body.dark-mode .li-drop{ background:#221f18; border
       imgCount.textContent = n ? ("✅ " + n + " screenshot" + (n > 1 ? "s" : "") + " selected") : "";
     });
   }
+})();
+</script>
+
+<!-- ============================================================
+     STEP FLOW — the generate journey as 5 pages, not one long scroll.
+     Everything that used to arrive at once now arrives when it's relevant:
+       1 Your details → 2 Your resume → 3 Prove it → 4 Download → 5 Apply
+     ============================================================ -->
+<style>
+  .rf-progress{max-width:760px;margin:4px auto 30px;padding:0 4px;}
+  .rf-dashes{display:flex;gap:8px;}
+  .rf-dash{flex:1;height:5px;border-radius:99px;background:#e3ded2;cursor:pointer;
+    transition:background .25s ease,transform .2s ease;}
+  .rf-dash:hover{background:#cfc3b2;}
+  .rf-dash.is-done{background:#c9b6a4;}
+  .rf-dash.is-active{background:var(--accent,#9a3b1c);transform:scaleY(1.7);}
+  .rf-progress-label{margin-top:11px;font-size:13px;color:#8a7a6d;letter-spacing:.2px;}
+  .rf-progress-label b{color:var(--accent,#9a3b1c);font-weight:800;margin-right:8px;}
+
+  /* One pane visible at a time. Defaults to step 1, so if JS ever fails the
+     form still shows rather than a blank page. */
+  .rf-pane{display:none;}
+  .rf-pane[data-pane="1"]{display:block;}
+  body.rf-s2 .rf-pane[data-pane="1"], body.rf-s3 .rf-pane[data-pane="1"],
+  body.rf-s4 .rf-pane[data-pane="1"], body.rf-s5 .rf-pane[data-pane="1"]{display:none;}
+  body.rf-s2 .rf-pane[data-pane="2"],
+  body.rf-s3 .rf-pane[data-pane="3"],
+  body.rf-s4 .rf-pane[data-pane="4"],
+  body.rf-s5 .rf-pane[data-pane="5"]{display:block;animation:rfFade .35s ease;}
+  @keyframes rfFade{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+
+  /* The old two-column result grid is gone; each pane is now a single column. */
+  .rf-pane .resume-card, .rf-pane .github-analysis, .rf-pane .primary-actions,
+  .rf-pane .preview-banner, .rf-pane .portfolio-banner, .rf-pane .role-match-banner,
+  .rf-pane .jobs-banner, .rf-pane .apps-banner{max-width:none !important;}
+
+  /* Two different objects, so they should not look like siblings.
+     The proof-backed resume is the product. The base resume is a file you download.
+     Making them look alike was the reason the flagship kept getting lost. */
+  .rf-card-tag{display:inline-block;font-size:11px;font-weight:800;letter-spacing:1.1px;
+    text-transform:uppercase;color:#9b8a7c;background:#f1e7d9;border-radius:999px;
+    padding:4px 11px;margin-bottom:12px;}
+  .rf-card-tag--hero{color:#fff;background:rgba(255,255,255,.22);}
+
+  /* HERO — the proof-backed resume. Dark, warm, unmistakably the main event. */
+  .rf-card-hero{background:linear-gradient(150deg,#7d2f16 0%,#9a3b1c 55%,#b8552c 100%);
+    color:#fff;border:none !important;border-radius:18px;padding:30px 28px 28px !important;
+    box-shadow:0 18px 44px rgba(122,45,20,.30);}
+  .rf-card-hero .primary-actions-title{color:#fff !important;font-size:25px;margin:0 0 8px;}
+  .rf-hero-lede{color:rgba(255,255,255,.86);margin:0 0 20px;font-size:15.5px;line-height:1.55;max-width:52ch;}
+  .rf-card-hero .pbr-big{background:#fff !important;color:#9a3b1c !important;border:none !important;
+    font-size:17px;font-weight:800;box-shadow:0 6px 18px rgba(0,0,0,.16);}
+  .rf-card-hero .pbr-big:hover{transform:translateY(-1px);}
+  .rf-card-hero .pbr-big-sub{color:rgba(255,255,255,.78) !important;}
+  .rf-card-hero .rf-dd-trigger{background:rgba(255,255,255,.12) !important;color:#fff !important;
+    border:1px solid rgba(255,255,255,.28) !important;}
+
+  /* PLAIN — the ordinary file. Quiet, utilitarian, deliberately not competing. */
+  .rf-card-plain{background:#fff;border:1px solid var(--border,#e3ded2) !important;border-radius:16px;}
+  .rf-card-note{display:block;margin-top:8px;font-size:13.5px;color:#8a7a6d;}
+
+  .rf-nav{display:flex;align-items:center;gap:12px;margin:30px 0 10px;flex-wrap:wrap;}
+  .rf-nav-btn{padding:12px 20px;border-radius:10px;cursor:pointer;font-weight:700;font-size:15px;
+    border:2px solid var(--border,#e3ded2);background:#fff;color:var(--accent,#9a3b1c);transition:.16s;}
+  .rf-nav-btn:hover{border-color:var(--accent,#9a3b1c);}
+  .rf-nav-primary{margin-left:auto;background:var(--accent,#9a3b1c);color:#fff;
+    border-color:var(--accent,#9a3b1c);}
+  .rf-nav-primary:hover{filter:brightness(1.08);}
+  @media(max-width:560px){
+    .rf-nav{flex-direction:column-reverse;align-items:stretch;}
+    .rf-nav-primary{margin-left:0;}
+  }
+</style>
+<script>
+(function () {
+  var NAMES = ["", "Your details", "Your resume", "Prove it", "Download", "Apply to jobs"];
+  var TOTAL = 5;
+
+  function paint(n) {
+    var b = document.body;
+    for (var i = 1; i <= TOTAL; i++) b.classList.remove("rf-s" + i);
+    b.classList.add("rf-s" + n);
+
+    var dashes = document.querySelectorAll("#rfProgress .rf-dash");
+    for (var j = 0; j < dashes.length; j++) {
+      var s = j + 1;
+      dashes[j].classList.toggle("is-active", s === n);
+      dashes[j].classList.toggle("is-done", s < n);
+    }
+    var num = document.getElementById("rfStepNum");
+    var nm = document.getElementById("rfStepName");
+    if (num) num.textContent = "Step " + n + " of " + TOTAL;
+    if (nm) nm.textContent = NAMES[n];
+  }
+
+  window.rfGoStep = function (n) {
+    n = Math.max(1, Math.min(TOTAL, parseInt(n, 10) || 1));
+    // Steps 2-5 don't exist until a resume does. Never strand someone on an
+    // empty page.
+    if (n > 1 && !window.__resumeText) n = 1;
+    paint(n);
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) { window.scrollTo(0, 0); }
+  };
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest) return;
+    var nav = e.target.closest("[data-goto]");
+    if (nav) { e.preventDefault(); window.rfGoStep(nav.getAttribute("data-goto")); return; }
+    var dash = e.target.closest("#rfProgress .rf-dash");   // the bar itself is navigation
+    if (dash) window.rfGoStep(dash.getAttribute("data-s"));
+  });
+
+  paint(1);
 })();
 </script>
 
