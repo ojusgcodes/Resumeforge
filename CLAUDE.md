@@ -5,6 +5,11 @@ LinkedIn into a tailored resume, matches roles, searches jobs, tailors a resume
 per job, and (via a Chrome extension) auto-fills applications. Includes accounts,
 an application tracker, and resume history.
 
+## ⚠️ Where deliverables go
+- **`Business/`** — every non-code deliverable: plans, decks, outreach lists, pricing docs, target sheets, research PDFs, contact sheets. Anything about the **company** rather than the **code**. This folder is **gitignored** (`Business/` in `.gitignore`), so it can never be pushed — not even by `git add .`. Save all such files here by default; do not put them in the repo root.
+- **The repo** — code only.
+- **Never run `git add .`.** Stage files by name. The repo was public for its first 49 commits and `git add .` had already pushed the club-outreach target list and the day-one plan to it. (No API keys ever leaked — `.gitignore` covered `.env` and `users.db`.)
+
 ## Stack
 - **Backend:** FastAPI (Python), single file `Backend/main.py` (~2500+ lines). AI via Google Gemini (`google-generativeai`, model `gemini-2.5-flash`).
 - **Frontend:** static site — `Frontend/index.html` (one large file, inline CSS/JS), plus `about.html`, `privacy.html`, `terms.html`, `extension.html`, `editor.html`.

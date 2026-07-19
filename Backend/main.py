@@ -1670,69 +1670,228 @@ class ProofShareRequest(BaseModel):
 
 
 def _proof_resume_page_html(d):
+    """THE CITED RESUME — the artifact a recruiter actually opens.
+
+    Design rule: this must LOOK like a resume, not like a report about a resume.
+    The old version was a list of ten claims with 'verify' links — which nobody
+    sends to anybody, so the proof only existed inside our app, where it wasn't
+    needed. Proof has to be a property of the document itself.
+
+    So: every bullet carries a superscript citation, exactly like an academic
+    paper, and a numbered References block at the bottom holds the evidence and
+    the link. Two things follow from that:
+
+      * The citations work even on the ~90% of recruiters who never click one.
+        A paper with a hundred references earns trust from people who check zero
+        of them — being checkable is the signal, not being checked.
+      * Ctrl+P gives a clean, cited PDF with the references intact. No PDF engine,
+        no Chromium, no WeasyPrint. See the @media print block at the end.
+    """
     esc = html.escape
-    name = esc((d.get("name") or "My Proof-Backed Resume").strip() or "My Proof-Backed Resume")
+    name = esc((d.get("name") or "").strip() or "Proof-Backed Resume")
     contact = esc((d.get("contact") or "").strip())
     headline = esc((d.get("headline") or d.get("role") or "").strip())
     summary = esc((d.get("summary") or "").strip())
-    rows = []
-    for i, b in enumerate(d.get("bullets") or []):
-        text = esc(str(b.get("text") or ""))
+
+    bullets = [b for b in (d.get("bullets") or []) if str(b.get("text") or "").strip()]
+
+    # Group bullets under the project they came from, in first-seen order, so the
+    # page reads like a resume's Projects section instead of a flat feed.
+    groups, order = {}, []
+    for i, b in enumerate(bullets):
+        proj = str(b.get("project") or "").strip() or "Experience"
+        if proj not in groups:
+            groups[proj] = []
+            order.append(proj)
+        groups[proj].append((i + 1, b))          # 1-based citation number
+
+    sections = []
+    for proj in order:
+        items = groups[proj]
+        link = ""
+        for _, b in items:
+            cand = str(b.get("link") or "").strip()
+            if cand.startswith("http"):
+                link = cand
+                break
+        title = esc(proj)
+        if link:
+            title = (f"<a class='projlink' href='{esc(link)}' target='_blank' rel='noopener'>"
+                     f"{title}<span class='ext'>&#8599;</span></a>")
+        lis = []
+        for n, b in items:
+            ev = esc(str(b.get("evidence") or "").strip())
+            lis.append(
+                f"<li>{esc(str(b.get('text') or ''))}"
+                f"<sup class='cite' data-ref='{n}' role='button' tabindex='0' "
+                f"title='See the evidence for this line'>{n}</sup>"
+                f"<span class='inline-ev'>{ev}</span></li>")
+        sections.append(f"<div class='entry'><h3>{title}</h3><ul>{''.join(lis)}</ul></div>")
+
+    skills, seen = [], set()
+    for b in bullets:
+        for t in (b.get("tech") or []):
+            t = str(t).strip()
+            if t and t.lower() not in seen:
+                seen.add(t.lower())
+                skills.append(esc(t))
+
+    refs = []
+    for i, b in enumerate(bullets):
+        n = i + 1
         ev = esc(str(b.get("evidence") or "Backed by the candidate's real project work."))
         conf = str(b.get("confidence") or "inferred").lower()
-        conf_cls = "verified" if conf == "verified" else "inferred"
+        cls = "verified" if conf == "verified" else "inferred"
         link = str(b.get("link") or "").strip()
-        chips = "".join(f"<span class='chip'>{esc(str(t))}</span>" for t in (b.get("tech") or [])[:8] if t)
-        proj = esc(str(b.get("project") or ""))
-        proj_html = f"<div class='proj'>{proj}</div>" if proj and proj.lower() != "general" else ""
-        link_html = (f"<a class='src' href='{esc(link)}' target='_blank' rel='noopener'>View the proof — project / live demo &rarr;</a>"
-                     if link.startswith("http") else "")
-        rows.append(
-            f"<li class='bullet'><div class='btop'><span class='dot'></span>"
-            f"<span class='btext'>{text}</span><span class='badge {conf_cls}'>{esc(conf)}</span></div>"
-            f"<div class='proof'>{proj_html}<div class='ev'>{ev}</div>"
-            f"<div class='chips'>{chips}</div>{link_html}</div></li>")
-    head_html = f"<p class='lead'>{headline}</p>" if headline else ""
+        link_html = (f"<a href='{esc(link)}' target='_blank' rel='noopener'>{esc(link)}</a>"
+                     if link.startswith("http") else "<span class='nolink'>Project evidence</span>")
+        proj = esc(str(b.get("project") or "").strip())
+        refs.append(
+            f"<li id='ref-{n}'><span class='rn'>{n}</span>"
+            f"<div class='rbody'><div class='rev'>{ev}</div>"
+            f"<div class='rmeta'>{('<b>' + proj + '</b> &middot; ') if proj else ''}{link_html}"
+            f"<span class='badge {cls}'>{esc(conf)}</span></div></div></li>")
+
+    n_refs = len(refs)
+    headline_html = f"<p class='role'>{headline}</p>" if headline else ""
     contact_html = f"<p class='contact'>{contact}</p>" if contact else ""
-    summ_html = f"<p class='summary'>{summary}</p>" if summary else ""
+    summary_html = (f"<section><h2>Summary</h2><p class='summary'>{summary}</p></section>"
+                    if summary else "")
+    skills_html = (f"<section><h2>Skills</h2><p class='skills'>{', '.join(skills)}</p></section>"
+                   if skills else "")
+    refs_html = (f"<section class='refs'><h2>References &mdash; the proof behind every line</h2>"
+                 f"<ol>{''.join(refs)}</ol></section>" if refs else "")
+
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>{name} — Proof-Backed Resume</title>
+<title>{name} &mdash; Resume</title>
 <style>
-:root{{--accent:#9a3b1c;--ink:#2a2118;--muted:#6b6250;--bg:#f7f1e6;--card:#fff;--border:#e3ded2;--green:#1d7a4d;--amber:#9a6a00;}}
-*{{box-sizing:border-box}}body{{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.55}}
-.wrap{{max-width:820px;margin:0 auto;padding:40px 20px 60px}}
-header{{border-bottom:3px solid var(--accent);padding-bottom:16px;margin-bottom:14px}}
-h1{{margin:0 0 4px;font-size:2rem;color:var(--accent)}}
-.lead{{font-size:1.05rem;margin:.3rem 0}}.contact{{color:var(--muted);font-size:.95rem;margin:.2rem 0}}
-.summary{{margin:.6rem 0 0}}
-.hint{{background:#fff;border:1px dashed var(--accent);border-radius:10px;padding:10px 14px;margin:16px 0;font-size:.92rem;color:var(--accent);font-weight:600}}
-ul.bullets{{list-style:none;margin:0;padding:0}}
-.bullet{{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden}}
-.btop{{display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer}}
-.btop:hover{{background:#fbf7f0}}
-.dot{{width:9px;height:9px;border-radius:50%;background:var(--accent);flex:0 0 auto}}
-.btext{{flex:1;font-weight:500}}
-.badge{{font-size:.68rem;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:20px;white-space:nowrap}}
-.badge.verified{{background:#e7f6ec;color:var(--green)}}.badge.inferred{{background:#fff2d8;color:var(--amber)}}
-.proof{{display:none;padding:2px 16px 16px 35px;border-top:1px solid var(--border);background:#fcfaf6}}
-.proof.open{{display:block}}
-.proj{{font-weight:700;margin:10px 0 4px}}.ev{{margin:6px 0}}
-.chips{{margin:6px 0}}.chip{{display:inline-block;background:#f0e8d8;color:#6b4a2b;border-radius:20px;padding:3px 10px;font-size:.78rem;margin:0 6px 6px 0}}
-.src{{color:var(--accent);font-weight:700;text-decoration:none}}.src:hover{{text-decoration:underline}}
-footer{{margin-top:28px;text-align:center;color:var(--muted);font-size:.82rem}}footer a{{color:var(--accent);font-weight:700;text-decoration:none}}
-</style></head><body><div class="wrap">
-<header><h1>{name}</h1>{head_html}{contact_html}</header>
-{summ_html}
-<div class="hint">&#128072; Click any line to see the proof behind it.</div>
-<ul class="bullets">{''.join(rows)}</ul>
-<footer>Every claim here is backed by real, verifiable work. Built with <a href="https://resumeforge-opal.vercel.app" target="_blank" rel="noopener">ResumeForge</a>.</footer>
+:root{{--accent:#9a3b1c;--ink:#1f1a15;--muted:#6b6250;--bg:#efe9df;--paper:#fff;--rule:#ddd5c8;--green:#1d7a4d;--amber:#8a5d00;}}
+*{{box-sizing:border-box}}
+body{{margin:0;background:var(--bg);color:var(--ink);line-height:1.5;
+ font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;}}
+.banner{{max-width:820px;margin:26px auto 0;padding:0 20px;display:flex;gap:12px;
+ align-items:center;justify-content:space-between;flex-wrap:wrap;
+ font-family:-apple-system,Segoe UI,Roboto,sans-serif;}}
+.banner p{{margin:0;color:#6b6250;font-size:13.5px;max-width:52ch;}}
+.banner b{{color:var(--accent);}}
+.btn{{border:1px solid var(--accent);background:#fff;color:var(--accent);border-radius:8px;
+ padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;
+ font-family:inherit;}}
+.btn:hover{{background:var(--accent);color:#fff;}}
+.sheet{{max-width:820px;margin:16px auto 60px;background:var(--paper);padding:52px 58px 46px;
+ box-shadow:0 10px 40px rgba(60,40,25,.13);}}
+header{{text-align:center;border-bottom:2px solid var(--ink);padding-bottom:16px;}}
+h1{{margin:0;font-size:34px;letter-spacing:.5px;}}
+.role{{margin:6px 0 0;font-size:16px;color:var(--accent);font-weight:600;}}
+.contact{{margin:6px 0 0;color:var(--muted);font-size:13.5px;
+ font-family:-apple-system,Segoe UI,Roboto,sans-serif;}}
+section{{margin-top:26px;}}
+h2{{font-size:12.5px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);
+ border-bottom:1px solid var(--rule);padding-bottom:5px;margin:0 0 12px;
+ font-family:-apple-system,Segoe UI,Roboto,sans-serif;}}
+.summary{{margin:0;font-size:15.5px;}}
+.skills{{margin:0;font-size:15px;}}
+.entry{{margin-bottom:16px;}}
+.entry h3{{margin:0 0 5px;font-size:16.5px;}}
+.projlink{{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--rule);}}
+.projlink:hover{{color:var(--accent);border-color:var(--accent);}}
+.ext{{font-size:11px;color:var(--accent);margin-left:4px;}}
+.entry ul{{margin:0;padding-left:20px;}}
+.entry li{{margin-bottom:6px;font-size:15px;}}
+/* The citation. Small, quiet, unmistakable — this is the whole idea. */
+sup.cite{{display:inline-block;margin-left:3px;font-size:10.5px;font-weight:700;color:var(--accent);
+ background:#f4e7de;border-radius:4px;padding:1px 5px;cursor:pointer;vertical-align:super;
+ font-family:-apple-system,Segoe UI,Roboto,sans-serif;transition:.15s;}}
+sup.cite:hover{{background:var(--accent);color:#fff;}}
+.inline-ev{{display:none;margin:6px 0 10px;padding:9px 12px;border-left:3px solid var(--accent);
+ background:#faf6f1;color:#5b5346;font-size:13.5px;
+ font-family:-apple-system,Segoe UI,Roboto,sans-serif;}}
+body.show-ev .inline-ev{{display:block;}}
+.refs ol{{margin:0;padding:0;list-style:none;counter-reset:none;}}
+.refs li{{display:flex;gap:12px;padding:11px 0;border-bottom:1px dotted var(--rule);}}
+.refs li:last-child{{border-bottom:none;}}
+.refs li.flash{{background:#fdf3e7;border-radius:8px;padding-left:8px;padding-right:8px;}}
+.rn{{flex:0 0 auto;width:24px;height:24px;border-radius:6px;background:#f4e7de;color:var(--accent);
+ font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;
+ font-family:-apple-system,Segoe UI,Roboto,sans-serif;}}
+.rbody{{flex:1;font-family:-apple-system,Segoe UI,Roboto,sans-serif;}}
+.rev{{font-size:14px;color:#3f3930;}}
+.rmeta{{margin-top:4px;font-size:12.5px;color:var(--muted);word-break:break-all;}}
+.rmeta a{{color:var(--accent);font-weight:600;text-decoration:none;}}
+.rmeta a:hover{{text-decoration:underline;}}
+.nolink{{color:#9b8f80;}}
+.badge{{display:inline-block;margin-left:8px;font-size:9.5px;font-weight:800;text-transform:uppercase;
+ letter-spacing:.5px;padding:2px 7px;border-radius:20px;white-space:nowrap;}}
+.badge.verified{{background:#e7f6ec;color:var(--green);}}
+.badge.inferred{{background:#fdf1d8;color:var(--amber);}}
+footer{{margin-top:30px;padding-top:14px;border-top:1px solid var(--rule);text-align:center;
+ color:var(--muted);font-size:12px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;}}
+footer a{{color:var(--accent);font-weight:700;text-decoration:none;}}
+/* Ctrl+P here gives a cited resume PDF, references and all. */
+@media print{{
+  body{{background:#fff;}}
+  .banner{{display:none;}}
+  .sheet{{box-shadow:none;margin:0;padding:0;max-width:none;}}
+  .inline-ev{{display:none !important;}}
+  sup.cite{{background:none;color:#000;padding:0;}}
+  .refs li{{break-inside:avoid;}}
+  a{{color:#000;}}
+}}
+</style></head><body>
+
+<div class="banner">
+  <p><b>Every line on this resume is cited.</b> Click any small numbered marker to jump straight
+     to the evidence behind that claim &mdash; the repo, the commit, the live demo.</p>
+  <button class="btn" id="toggleEv">Show all evidence inline</button>
 </div>
+
+<div class="sheet">
+  <header>
+    <h1>{name}</h1>
+    {headline_html}
+    {contact_html}
+  </header>
+
+  {summary_html}
+
+  <section>
+    <h2>Projects &amp; Experience</h2>
+    {''.join(sections) if sections else "<p class='summary'>No evidence-backed entries yet.</p>"}
+  </section>
+
+  {skills_html}
+  {refs_html}
+
+  <footer>
+    {n_refs} claim{'' if n_refs == 1 else 's'} on this resume &mdash; {n_refs} source{'' if n_refs == 1 else 's'}.
+    Nothing here is asserted without evidence.<br>
+    Built with <a href="https://resumeforge-opal.vercel.app" target="_blank" rel="noopener">ResumeForge</a>.
+  </footer>
+</div>
+
 <script>
-document.querySelectorAll(".btop").forEach(function(b){{b.addEventListener("click",function(){{
-  var p=b.parentNode.querySelector(".proof"); if(p) p.classList.toggle("open");
-}});}});
+// Click a citation -> jump to its reference and flash it.
+function goRef(n) {{
+  var el = document.getElementById("ref-" + n);
+  if (!el) return;
+  el.scrollIntoView({{ behavior: "smooth", block: "center" }});
+  el.classList.add("flash");
+  setTimeout(function () {{ el.classList.remove("flash"); }}, 1600);
+}}
+document.querySelectorAll("sup.cite").forEach(function (c) {{
+  c.addEventListener("click", function () {{ goRef(c.getAttribute("data-ref")); }});
+  c.addEventListener("keydown", function (e) {{
+    if (e.key === "Enter" || e.key === " ") {{ e.preventDefault(); goRef(c.getAttribute("data-ref")); }}
+  }});
+}});
+// For the recruiter who wants everything at once rather than one click at a time.
+var t = document.getElementById("toggleEv");
+if (t) t.addEventListener("click", function () {{
+  var on = document.body.classList.toggle("show-ev");
+  t.textContent = on ? "Hide inline evidence" : "Show all evidence inline";
+}});
 </script>
 </body></html>"""
 

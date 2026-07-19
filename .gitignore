@@ -34,14 +34,22 @@ Backend/resume_photo.pdf
 Backend/latest_resume.txt
 Backend/latest_contact.txt
 
+# ============================================================
 # Business / strategy documents — NEVER commit these.
 # The outreach target list, pricing plans and day-one plan are worth more to a
 # competitor than the source code is. They were public for 49 commits because
-# of `git add .` — always stage files by name instead.
+# of `git add .`.
+#
+# Everything in Business/ is invisible to git — even `git add .` cannot stage it.
+# Put every plan, deck, target list and contact sheet in there. If a document is
+# about the COMPANY rather than the CODE, it belongs in Business/.
+# ============================================================
+Business/
+
+# Belt and braces, in case a business doc lands outside Business/ by accident.
 ResumeForge_*.pdf
 ResumeForge_*.xlsx
 ResumeForge_*.docx
-ResumeForge_Jargon_Decoder.html
 
 # Temporary files
 Backend/requirements_clean.txt
