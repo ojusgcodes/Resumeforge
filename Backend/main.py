@@ -387,6 +387,17 @@ def _plan_from_auth(auth_header):
 
 @app.middleware("http")
 async def rate_limit_mw(request: Request, call_next):
+    # NEVER rate-limit or meter a CORS preflight.
+    #
+    # Before any cross-origin POST, the browser sends an OPTIONS "may I?"
+    # request. It carries no user intent and costs us nothing. We were counting
+    # those against the daily quota and answering 429 — so the browser aborted
+    # before the real request was ever sent, and the app reported a mysterious
+    # "couldn't reach the server". Preflights also burned the quota, which is
+    # how a handful of clicks exhausted an entire day's allowance.
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
     if request.url.path in RL_PATHS:
         ip = request.client.host if request.client else "unknown"
         now = time.time()
