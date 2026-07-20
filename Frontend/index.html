@@ -6078,7 +6078,33 @@ body.dark-mode .pbr-intro, body.dark-mode .pbr-summary, body.dark-mode .pbr-bull
   function nameFromResume() { var m = window.__resumeMeta || {}; var first = ((window.__resumeText || "").split("\n")[0] || "").trim(); return (m.name || first || "").slice(0, 80); }
   function openP() { var o = $("pbrPanel"); if (!o) return; o.classList.add("open"); o.setAttribute("aria-hidden", "false"); document.body.style.overflow = "hidden"; if (!LAST) build(); }
   function closeP() { var o = $("pbrPanel"); if (!o) return; o.classList.remove("open"); o.setAttribute("aria-hidden", "true"); document.body.style.overflow = ""; }
-  function api(path, body) { return fetch(PBR_API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(function (r) { return r.json(); }); }
+  // Read the body as text first, THEN try to parse it. A plain r.json() throws
+  // on any non-JSON response (a 500 HTML page, a 502 from the host, an empty
+  // body on timeout) — which used to fall into .catch() and get reported as
+  // "couldn't reach the server", even though the server answered fine. That
+  // sent us hunting a network problem that didn't exist.
+  function api(path, body) {
+    return fetch(PBR_API + path, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      return r.text().then(function (txt) {
+        try { return JSON.parse(txt); } catch (e) {}
+        var msg;
+        if (r.status === 429) {
+          msg = "You've used your AI actions for today. They reset tomorrow.";
+        } else if (r.status === 402) {
+          msg = "This one needs the Placement Season Pass.";
+        } else if (r.status >= 500) {
+          msg = "The server hit an error building your proof (HTTP " + r.status
+              + "). This is usually the AI provider rate-limiting us — wait a minute and try again.";
+        } else {
+          msg = "Unexpected response from the server (HTTP " + r.status + ").";
+        }
+        return { success: false, error: msg, _status: r.status };
+      });
+    });
+  }
   function build() {
     if (!ghUser() && !(window.__resumeText || "")) { $("pbrMsg").innerHTML = "Generate a resume (or enter your GitHub) first, then come back."; return; }
     $("pbrIntro").style.display = "block"; $("pbrOut").style.display = "none";
@@ -6095,7 +6121,14 @@ body.dark-mode .pbr-intro, body.dark-mode .pbr-summary, body.dark-mode .pbr-bull
       renderBullets();
       $("pbrMsg").innerHTML = ""; $("pbrIntro").style.display = "none"; $("pbrOut").style.display = "block";
       $("pbrShareOut").innerHTML = "";
-    }).catch(function () { $("pbrMsg").innerHTML = "⚠️ Couldn't reach the server. Is the backend awake?"; });
+    }).catch(function (err) {
+      // Only a genuine network failure reaches here now — the server returning
+      // an error is handled above with a real message.
+      $("pbrMsg").innerHTML = "⚠️ Network error — couldn't reach the server. "
+        + "If you opened this page as a local file, it's pointing at localhost:8000; "
+        + "use the live site instead.";
+      try { console.error("proof-resume failed:", err); } catch (e) {}
+    });
   }
   function renderBullets() {
     $("pbrSummary").innerHTML = LAST.summary ? esc(LAST.summary) : "";

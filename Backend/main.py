@@ -1593,7 +1593,24 @@ class ProofResumeRequest(BaseModel):
 @app.post("/proof-resume")
 def proof_resume(data: ProofResumeRequest):
     username = (data.github or "").rstrip("/").split("/")[-1].strip()
-    evidence = _fetch_github_evidence(username)
+
+    # Guarded on purpose. GitHub's unauthenticated API allows only 60 requests
+    # per hour PER IP, and on Render we share an IP — so this call really does
+    # fail in production. Unguarded it raised, FastAPI returned a 500 HTML page,
+    # and the browser reported "couldn't reach the server", which sent us
+    # hunting a network fault that never existed. Degrade instead: if we can't
+    # read GitHub, fall back to the resume text.
+    try:
+        evidence = _fetch_github_evidence(username)
+    except Exception as e:
+        print("proof-resume: GitHub evidence fetch failed:", str(e))
+        evidence = []
+        if not (data.resume or "").strip():
+            return {"success": False,
+                    "error": ("Couldn't read your GitHub just now — GitHub may be rate-limiting us. "
+                              "Wait a minute and try again, or generate a resume first so we can "
+                              "build proof from that.")}
+
     if not evidence and not (data.resume or "").strip():
         return {"success": False,
                 "error": "Add a GitHub username with public projects (or paste a resume) so we can build proof."}
