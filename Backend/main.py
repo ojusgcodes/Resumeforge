@@ -1592,6 +1592,24 @@ class ProofResumeRequest(BaseModel):
 
 @app.post("/proof-resume")
 def proof_resume(data: ProofResumeRequest):
+    """Catch-all wrapper.
+
+    An unhandled exception here becomes a bare 500 that never passes through
+    the CORS middleware — so the browser blocks it and reports a *network*
+    error, even though the server answered. That sent us chasing a firewall
+    problem that never existed. Any crash now returns clean JSON, with CORS
+    headers, carrying a message the user can actually act on.
+    """
+    try:
+        return _proof_resume_impl(data)
+    except Exception as e:
+        print("proof-resume UNHANDLED:", repr(e))
+        return {"success": False,
+                "error": ("Something went wrong building your proof-backed resume. "
+                          "Please try again in a moment.")}
+
+
+def _proof_resume_impl(data: ProofResumeRequest):
     username = (data.github or "").rstrip("/").split("/")[-1].strip()
 
     # Guarded on purpose. GitHub's unauthenticated API allows only 60 requests
