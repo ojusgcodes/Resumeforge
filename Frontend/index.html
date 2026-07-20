@@ -4557,9 +4557,11 @@ body.dark-mode .pp-sum,body.dark-mode .pp-bullet,body.dark-mode .pp-row,body.dar
     function ghUser() { return (($("github") || {}).value || "").trim(); }
     function rtext() { return window.__resumeText || ""; }
     function meta() { return window.__resumeMeta || {}; }
+    // Cold-start safe: wakes a sleeping free-tier instance and retries.
     function api(path, body) {
-        return fetch(PP_API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-            .then(function (r) { return r.json(); });
+        return window.rfFetchJSON(path, body, {
+            onStatus: function (m) { var el = $("ppProofOut"); if (el) el.innerHTML = "<p class='pp-load'>" + m + "</p>"; }
+        });
     }
     function switchTab(t) {
         var tabs = document.querySelectorAll(".pp-tab");
@@ -5713,7 +5715,12 @@ function formatResumeHTML(text) {
   function openP(){ var o=$("interviewPanel"); if(!o) return; o.classList.add("open"); o.setAttribute("aria-hidden","false"); document.body.style.overflow="hidden";
     if(!$("ivRole").value && window.__resumeMeta && window.__resumeMeta.role){ $("ivRole").value = window.__resumeMeta.role; } }
   function closeP(){ var o=$("interviewPanel"); if(!o) return; o.classList.remove("open"); o.setAttribute("aria-hidden","true"); document.body.style.overflow=""; }
-  function api(path, body){ return fetch(IV_API+path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)}).then(function(r){ return r.json(); }); }
+  // Cold-start safe: wakes a sleeping free-tier instance and retries.
+  function api(path, body){
+    return window.rfFetchJSON(path, body, {
+      onStatus: function(m){ var el=$("ivInputMsg"); if(el) el.innerHTML = m; }
+    });
+  }
   function chips(resources){ if(!resources||!resources.length) return ""; return '<div class="iv-chips">'+resources.map(function(r){ return '<a class="iv-chip" href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.label)+' ↗</a>'; }).join("")+'</div>'; }
   function renderSummary(d){ $("ivSummaryCard").innerHTML = '<h3>📌 What you need to learn'+(d.role?' — '+esc(d.role):'')+'</h3>'
       + '<p class="iv-summary">'+esc(d.summary||"")+'</p>'
@@ -5756,7 +5763,10 @@ function formatResumeHTML(text) {
       renderSummary(d); renderTopics(d.topics); renderPapers(d.papers, d.scholar);
       $("ivResults").style.display="block"; showSec("topics");
       $("ivResults").scrollIntoView({behavior:"smooth", block:"start"});
-    }).catch(function(){ $("ivInputMsg").innerHTML="⚠️ Couldn't reach the server. Is the backend awake?"; });
+    }).catch(function(err){
+      $("ivInputMsg").innerHTML="⚠️ Something went wrong analysing the job description. Please try again.";
+      try { console.error("interview-prep failed:", err); } catch(e){}
+    });
   }
   function loadJobs(){
     var jobs=window.__lastJobs;
@@ -6083,26 +6093,11 @@ body.dark-mode .pbr-intro, body.dark-mode .pbr-summary, body.dark-mode .pbr-bull
   // body on timeout) — which used to fall into .catch() and get reported as
   // "couldn't reach the server", even though the server answered fine. That
   // sent us hunting a network problem that didn't exist.
+  // Goes through rfFetchJSON so a sleeping free-tier instance gets woken and
+  // the request retried, instead of surfacing as "couldn't reach the server".
   function api(path, body) {
-    return fetch(PBR_API + path, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    }).then(function (r) {
-      return r.text().then(function (txt) {
-        try { return JSON.parse(txt); } catch (e) {}
-        var msg;
-        if (r.status === 429) {
-          msg = "You've used your AI actions for today. They reset tomorrow.";
-        } else if (r.status === 402) {
-          msg = "This one needs the Placement Season Pass.";
-        } else if (r.status >= 500) {
-          msg = "The server hit an error building your proof (HTTP " + r.status
-              + "). This is usually the AI provider rate-limiting us — wait a minute and try again.";
-        } else {
-          msg = "Unexpected response from the server (HTTP " + r.status + ").";
-        }
-        return { success: false, error: msg, _status: r.status };
-      });
+    return window.rfFetchJSON(path, body, {
+      onStatus: function (m) { var el = $("pbrMsg"); if (el) el.innerHTML = m; }
     });
   }
   function build() {
@@ -6483,6 +6478,96 @@ body.dark-mode .li-steps li, body.dark-mode .li-drop{ background:#221f18; border
       imgCount.textContent = n ? ("✅ " + n + " screenshot" + (n > 1 ? "s" : "") + " selected") : "";
     });
   }
+})();
+</script>
+
+<script>
+/* ============================================================
+   COLD-START SURVIVAL
+
+   Render's free tier puts the backend to sleep after 15 minutes. While it wakes
+   (~50s), RENDER'S OWN PROXY answers — not our app — with a 502/503 that carries
+   no CORS headers. The browser therefore blocks it and fetch() rejects with a
+   bare TypeError, which every panel reported as "couldn't reach the server".
+   The server was fine. It was asleep.
+
+   So: rfFetchJSON() wakes the instance and retries instead of giving up, and
+   tells the user what's actually happening while it waits.
+   ============================================================ */
+(function () {
+  var API = (location.hostname === "localhost" || location.hostname === "127.0.0.1" ||
+             location.protocol === "file:")
+    ? "http://localhost:8000" : "https://resumeforge-backend-1bu3.onrender.com";
+
+  var warmed = false;
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  // Ping /health until the instance answers (or we give up). Waking a cold
+  // Render free instance takes roughly 50 seconds.
+  async function wake(maxMs) {
+    var deadline = Date.now() + (maxMs || 75000);
+    while (Date.now() < deadline) {
+      try {
+        var r = await fetch(API + "/health", { cache: "no-store" });
+        if (r.ok) { warmed = true; return true; }
+      } catch (e) { /* still asleep */ }
+      await sleep(3000);
+    }
+    return false;
+  }
+  window.rfWakeBackend = wake;
+
+  /* POST JSON, surviving cold starts. Always resolves to an object — never
+     throws — so call sites can just read .success and .error. */
+  window.rfFetchJSON = async function (path, body, opts) {
+    opts = opts || {};
+    var onStatus = opts.onStatus || function () {};
+
+    async function attempt() {
+      var res = await fetch(API + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {})
+      });
+      var txt = await res.text();
+      try { return JSON.parse(txt); } catch (e) {}
+      // Non-JSON body = an error page from the host, not from our app.
+      if (res.status === 429) return { success: false, error: "You've used your AI actions for today. They reset tomorrow.", _status: 429 };
+      if (res.status === 402) return { success: false, error: "This one needs the Placement Season Pass.", _status: 402 };
+      if (res.status === 502 || res.status === 503) return { _asleep: true };
+      return { success: false, error: "Unexpected response from the server (HTTP " + res.status + ").", _status: res.status };
+    }
+
+    try {
+      var d = await attempt();
+      if (!d._asleep) return d;
+    } catch (e) {
+      // Network-level rejection — almost always the sleeping instance.
+    }
+
+    onStatus("⏳ Waking the server (free hosting sleeps after 15 min — this takes up to a minute)…");
+    var up = await wake(75000);
+    if (!up) {
+      return { success: false, error: "The server is taking unusually long to wake up. Give it a minute and try again." };
+    }
+
+    onStatus("✅ Server's awake — carrying on…");
+    try {
+      var d2 = await attempt();
+      if (d2._asleep) return { success: false, error: "The server woke up but isn't ready yet. Try once more in a few seconds." };
+      return d2;
+    } catch (e2) {
+      try { console.error("rfFetchJSON failed after wake:", path, e2); } catch (e3) {}
+      return { success: false, error: "Couldn't reach the server even after waking it. Check your connection and try again." };
+    }
+  };
+
+  // Warm the instance as soon as someone lands, so the first real click is fast.
+  try {
+    fetch(API + "/health", { cache: "no-store" }).then(function (r) { if (r.ok) warmed = true; })
+      .catch(function () { });
+  } catch (e) { }
 })();
 </script>
 
