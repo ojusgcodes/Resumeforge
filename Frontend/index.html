@@ -2835,6 +2835,7 @@ document.getElementById("result").innerHTML = `
         <div class="apps-controls">
             <label class="apps-tpl-label">Template:
                 <select id="appsTemplate">
+                    <option value="onepage">One-Page Tech (recommended)</option>
                     <option value="classic">Classic Grey</option>
                     <option value="slate">Slate</option>
                     <option value="photo">Steel Blue</option>
@@ -2869,6 +2870,7 @@ document.getElementById("result").innerHTML = `
            That's the <b>Proof-Backed Resume</b>, back on step 3.</span></p>
 
         <div class="template-gallery" id="templateGallery">
+            <div class="tpl-card tpl-recommended" data-template="onepage"><img src="templates/thumb_onepage.png" alt="One-page tech resume template with right-aligned dates"><span>One-Page Tech ★</span></div>
             <div class="tpl-card" data-template="slate"><img src="templates/thumb_slate.png" alt="Slate colour resume template"><span>Slate</span></div>
             <div class="tpl-card" data-template="photo"><img src="templates/thumb_photo.png" alt="Steel blue resume template"><span>Steel Blue</span></div>
             <div class="tpl-card" data-template="green"><img src="templates/thumb_green.png" alt="Forest green resume template"><span>Forest Green</span></div>
@@ -6507,6 +6509,10 @@ body.dark-mode .li-steps li, body.dark-mode .li-drop{ background:#221f18; border
 
   /* PLAIN — the ordinary file. Quiet, utilitarian, deliberately not competing. */
   .rf-card-plain{background:#fff;border:1px solid var(--border,#e3ded2) !important;border-radius:16px;}
+  /* Mark the recommended template so people don't default to a pretty one that
+     an ATS can't read. */
+  .tpl-card.tpl-recommended{outline:2px solid var(--accent,#9a3b1c);outline-offset:2px;border-radius:8px;}
+  .tpl-card.tpl-recommended span{color:var(--accent,#9a3b1c);font-weight:700;}
   .rf-card-note{display:block;margin-top:8px;font-size:13.5px;color:#8a7a6d;}
 
   .rf-nav{display:flex;align-items:center;gap:12px;margin:30px 0 10px;flex-wrap:wrap;}

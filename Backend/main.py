@@ -3600,6 +3600,7 @@ def render_html_to_pdf(html_content, basename):
 # ============================================================
 
 TEMPLATE_ACCENTS = {
+    "onepage": "#111111",
     "classic": "#7f7773",
     "slate": "#3f4a56",
     "green": "#1d7a4d",
@@ -3698,6 +3699,255 @@ def build_resume_pdf(basename, resume_text, name, email, phone, location, templa
 
     doc.build(story)
     return pdf_file
+
+
+# ---------------------------------------------------------------------------
+# "ONE-PAGE TECH" TEMPLATE  (template key: "onepage")
+#
+# The classic single-column CS resume: centered serif name, pipe-separated
+# contact line, ALL-CAPS section headings with a rule under them, entry titles
+# on the left with the DATE RIGHT-ALIGNED on the same line, and tight bullets.
+#
+# Two reasons this is the default for base AND tailored resumes:
+#   * It's what US tech recruiters expect, so it reads as "normal" instantly.
+#   * It's single-column with standard headings, which is the most ATS-safe
+#     structure there is — no sidebars, no tables around the body text.
+#
+# It also AUTO-FITS to one page: if the content overflows, it re-renders a
+# notch smaller (down to 82%) rather than spilling onto page 2.
+# ---------------------------------------------------------------------------
+
+# --- LaTeX typography -------------------------------------------------------
+# Latin Modern Roman is the font LaTeX actually uses (the Unicode successor to
+# Knuth's Computer Modern). Embedding it is the difference between a resume that
+# LOOKS like it came out of LaTeX and one that looks like Word.
+#
+# The .ttf files are vendored in Backend/fonts/ on purpose — Render's container
+# has no LaTeX installed, so shipping them is what makes prod match local.
+# Everything is guarded: if the fonts are missing for any reason we silently
+# fall back to Times, which is reportlab's built-in serif. A missing font must
+# never turn into a 500 on a resume download.
+_LATEX_FONTS_OK = False
+try:
+    from reportlab.pdfbase import pdfmetrics as _pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont as _RLTTFont
+
+    _FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+    for _fname, _file in (
+        ("LMRoman", "LMRoman-Regular.ttf"),
+        ("LMRoman-Bold", "LMRoman-Bold.ttf"),
+        ("LMRoman-Italic", "LMRoman-Italic.ttf"),
+        ("LMRoman-BoldItalic", "LMRoman-BoldItalic.ttf"),
+    ):
+        _pdfmetrics.registerFont(_RLTTFont(_fname, os.path.join(_FONT_DIR, _file)))
+    _pdfmetrics.registerFontFamily(
+        "LMRoman", normal="LMRoman", bold="LMRoman-Bold",
+        italic="LMRoman-Italic", boldItalic="LMRoman-BoldItalic")
+    _LATEX_FONTS_OK = True
+    print("Latin Modern (LaTeX) fonts loaded for the one-page template.")
+except Exception as _e:
+    print("Latin Modern fonts unavailable, using Times instead:", str(_e))
+
+
+def _serif(weight="normal"):
+    """Return the LaTeX serif face when available, else reportlab's Times."""
+    if _LATEX_FONTS_OK:
+        return {"normal": "LMRoman", "bold": "LMRoman-Bold",
+                "italic": "LMRoman-Italic", "bolditalic": "LMRoman-BoldItalic"}[weight]
+    return {"normal": "Times-Roman", "bold": "Times-Bold",
+            "italic": "Times-Italic", "bolditalic": "Times-BoldItalic"}[weight]
+
+
+# Matches a trailing date or date range so we can right-align it, e.g.
+#   "Research Intern, Face Perception Lab    May 2026 - August 2026"
+#   "Stock Volatility & Trend Prediction     July 2026"
+_MONTHS = (r"Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+           r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t)?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?")
+_DATE_TAIL = re.compile(
+    r"(?:[\s–—\-\|,]{1,4})("
+    r"(?:(?:%s)[a-z]*\.?\s*\d{4}|\d{4}|Present|Current|Ongoing)"
+    r"(?:\s*(?:[-–—]|to)\s*(?:(?:%s)[a-z]*\.?\s*\d{4}|\d{4}|Present|Current|Ongoing))?"
+    r")\s*$" % (_MONTHS, _MONTHS), re.IGNORECASE)
+
+
+def _split_title_date(line):
+    """'Title — May 2026 - Aug 2026' -> ('Title', 'May 2026 - Aug 2026')."""
+    line = (line or "").strip()
+    m = _DATE_TAIL.search(line)
+    if not m:
+        return line, ""
+    return line[:m.start()].strip(" -–—|,\t"), m.group(1).strip()
+
+
+def _is_entry_heading(line):
+    """An entry title (company/project/degree) vs. a bullet under it.
+    Bullets arrive already stripped of their marker, so we use the ORIGINAL
+    line's marker plus a length heuristic."""
+    s = (line or "").strip()
+    if not s:
+        return False
+    if re.match(r"^[-•*●▪]", s):      # explicit bullet marker
+        return False
+    if _DATE_TAIL.search(s):                          # has a trailing date -> heading
+        return True
+    return len(s) < 95 and not s.endswith(".")
+
+
+def build_resume_onepage_pdf(basename, resume_text, name, email, phone, location,
+                             role="", scale=1.0):
+    """Render the compact one-page tech resume. Returns a file path."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib.colors import HexColor, black
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Table, TableStyle,
+                                    Spacer, HRFlowable, KeepTogether)
+    from reportlab.lib.styles import ParagraphStyle
+
+    ink = HexColor("#111111")
+    pdf_file = f"{basename}_{secrets.token_hex(6)}.pdf"
+
+    S = float(scale)
+    doc = SimpleDocTemplate(
+        pdf_file, pagesize=A4,
+        leftMargin=15 * mm, rightMargin=15 * mm,
+        topMargin=12 * mm, bottomMargin=11 * mm,
+        title=(name or "Resume"), author=(name or ""),
+    )
+    cw = doc.width
+
+    # Latin Modern = the LaTeX look. Falls back to Times if the fonts are absent.
+    F_REG, F_BOLD, F_ITAL = _serif("normal"), _serif("bold"), _serif("italic")
+    # Latin Modern runs optically smaller than Times at the same point size, so
+    # nudge it up slightly to keep the same physical text size on the page.
+    K = 1.06 if _LATEX_FONTS_OK else 1.0
+
+    name_s = ParagraphStyle("n", fontName=F_BOLD, fontSize=20 * S * K, leading=23 * S * K,
+                            alignment=1, textColor=ink, spaceAfter=0)
+    contact_s = ParagraphStyle("c", fontName=F_REG, fontSize=9.2 * S * K, leading=12 * S * K,
+                               alignment=1, textColor=ink)
+    sec_s = ParagraphStyle("s", fontName=F_BOLD, fontSize=10.6 * S * K, leading=12.5 * S * K,
+                           textColor=ink)
+    ttl_s = ParagraphStyle("t", fontName=F_BOLD, fontSize=10.2 * S * K, leading=12.4 * S * K,
+                           textColor=ink)
+    date_s = ParagraphStyle("d", fontName=F_ITAL, fontSize=9.6 * S * K, leading=12.4 * S * K,
+                            alignment=2, textColor=ink)
+    sub_s = ParagraphStyle("sb", fontName=F_ITAL, fontSize=9.6 * S * K, leading=12 * S * K,
+                           textColor=ink)
+    bul_s = ParagraphStyle("b", fontName=F_REG, fontSize=9.6 * S * K, leading=11.8 * S * K,
+                           leftIndent=9 * S, bulletIndent=2 * S, textColor=ink,
+                           # bullets default to Helvetica — keep them in the serif
+                           # so the page is typographically consistent.
+                           bulletFontName=F_REG, bulletFontSize=9.6 * S * K)
+    body_s = ParagraphStyle("bd", fontName=F_REG, fontSize=9.6 * S * K, leading=11.8 * S * K,
+                            textColor=ink)
+
+    def esc(t):
+        return html.escape(str(t or ""))
+
+    story = []
+
+    # --- header: name + one pipe-separated contact line ---------------------
+    story.append(Paragraph(esc(name or "Your Name"), name_s))
+    bits = [b for b in [location, phone, email] if b and str(b).strip()]
+    if bits:
+        story.append(Spacer(1, 2.5 * S))
+        story.append(Paragraph(" &nbsp;|&nbsp; ".join(esc(b) for b in bits), contact_s))
+    story.append(Spacer(1, 6 * S))
+
+    def section(title):
+        story.append(Spacer(1, 5 * S))
+        story.append(Paragraph(esc(title).upper(), sec_s))
+        story.append(HRFlowable(width="100%", thickness=0.8, color=black,
+                                spaceBefore=1.5 * S, spaceAfter=3.5 * S))
+
+    def title_row(left_txt, right_txt, left_style, right_style):
+        """Entry title on the left, date right-aligned on the same baseline."""
+        t = Table([[Paragraph(left_txt, left_style), Paragraph(right_txt, right_style)]],
+                  colWidths=[cw * 0.70, cw * 0.30])
+        t.setStyle(TableStyle([
+            ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        return t
+
+    def render_entries(raw):
+        """Turn a section's raw text into entry headings (with right-aligned
+        dates) followed by their bullets."""
+        out = []
+        for original in (clean_resume_markdown(raw or "")).splitlines():
+            s = original.strip()
+            if not s or re.fullmatch(r"[-–—_]{2,}", s):
+                continue
+            bulleted = bool(re.match(r"^[-•*●▪]\s*", s))
+            s = re.sub(r"^[-•*●▪]\s*", "", s).strip()
+            if not s:
+                continue
+            if bulleted or not _is_entry_heading(original):
+                out.append(Paragraph(esc(s), bul_s, bulletText="•"))
+                out.append(Spacer(1, 1.2 * S))
+            else:
+                title, date = _split_title_date(s)
+                out.append(Spacer(1, 3 * S))
+                if date:
+                    out.append(title_row(f"<b>{esc(title)}</b>", f"{esc(date)}", ttl_s, date_s))
+                else:
+                    out.append(Paragraph(f"<b>{esc(title)}</b>", ttl_s))
+                out.append(Spacer(1, 1.5 * S))
+        return out
+
+    s = split_resume_sections(resume_text or "")
+
+    summary = "\n".join(_section_lines(s.get("summary", "")))
+    if summary.strip():
+        section("Summary")
+        story.append(Paragraph(esc(summary), body_s))
+
+    for label, key in (("Education", "education"), ("Experience", "experience"),
+                       ("Projects", "projects")):
+        block = render_entries(s.get(key, ""))
+        if block:
+            section(label)
+            story.extend(block)
+
+    skills = [ln for ln in _section_lines(s.get("skills", "")) if ln.strip()]
+    if skills:
+        section("Technical Skills")
+        for ln in skills:
+            story.append(Paragraph(esc(ln), body_s))
+            story.append(Spacer(1, 1.2 * S))
+
+    # Nothing matched the expected headings -> lay the raw text out rather than
+    # handing back an empty page.
+    if len(story) <= 3:
+        for ln in _section_lines(resume_text or ""):
+            story.append(Paragraph(esc(ln), body_s))
+            story.append(Spacer(1, 1.5 * S))
+
+    pages = {"n": 0}
+
+    def _count(canvas, _doc):
+        pages["n"] += 1
+
+    doc.build(story, onFirstPage=_count, onLaterPages=_count)
+    return pdf_file, pages["n"]
+
+
+def build_resume_onepage_autofit(basename, resume_text, name, email, phone, location, role=""):
+    """Render at full size; if it spills past one page, redo a notch smaller.
+    'Tightly fitted to one page' is the whole point of this template."""
+    last = None
+    for sc in (1.0, 0.95, 0.90, 0.86, 0.82):
+        try:
+            path, n = build_resume_onepage_pdf(basename, resume_text, name, email,
+                                               phone, location, role=role, scale=sc)
+        except Exception as e:
+            print("onepage render error at scale", sc, ":", str(e))
+            break
+        last = path
+        if n <= 1:
+            return path
+    return last
 
 
 def build_cover_pdf(basename, text, name, email, phone, location):
@@ -4029,12 +4279,23 @@ def download_resume_pdf(data: ResumePDFRequest):
         filename = (_professional_filename(name, data.role)
                     if data.role else f"ResumeForge_{tmpl}.pdf")
 
-    # Preferred path: the real HTML template, so the PDF matches the thumbnail.
     pdf_file = None
-    try:
-        pdf_file = render_template_pdf(f"resume_{tmpl}", tmpl, resume, name, email, phone, location)
-    except Exception as e:
-        print("WeasyPrint render failed (%s), using reportlab:" % tmpl, str(e))
+
+    # The one-page tech template has its own reportlab renderer (right-aligned
+    # dates + auto-fit to a single page), so it doesn't go through the HTML path.
+    if tmpl.lower() == "onepage":
+        try:
+            pdf_file = build_resume_onepage_autofit(
+                "resume_onepage", resume, name, email, phone, location, role=data.role)
+        except Exception as e:
+            print("one-page render failed, falling back:", str(e))
+
+    # Otherwise: the real HTML template, so the PDF matches the thumbnail.
+    if not pdf_file:
+        try:
+            pdf_file = render_template_pdf(f"resume_{tmpl}", tmpl, resume, name, email, phone, location)
+        except Exception as e:
+            print("WeasyPrint render failed (%s), using reportlab:" % tmpl, str(e))
 
     # Fallback: 'professional' (deliberately single-column and ATS-safe), or any
     # template that failed to render. An ugly PDF beats a 500.
@@ -4562,8 +4823,17 @@ def render_resume(data: RenderRequest):
     name, email, phone, location = _contact_or_default(
         data.name, data.email, data.phone, data.location)
 
-    pdf_file = build_resume_pdf("render_app", resume, name, email, phone, location,
-                                template=data.template or "classic")
+    tmpl = (data.template or "onepage")
+    pdf_file = None
+    if tmpl.lower() == "onepage":
+        try:
+            pdf_file = build_resume_onepage_autofit(
+                "render_app", resume, name, email, phone, location, role=data.role)
+        except Exception as e:
+            print("one-page render failed in /render-resume, falling back:", str(e))
+    if not pdf_file:
+        pdf_file = build_resume_pdf("render_app", resume, name, email, phone, location,
+                                    template=tmpl)
 
     return FileResponse(
         pdf_file,
